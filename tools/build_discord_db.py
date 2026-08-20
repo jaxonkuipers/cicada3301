@@ -13,6 +13,7 @@ Regenerable. Delete discord.db and rerun.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sqlite3
 import sys
@@ -27,9 +28,12 @@ from lib import runes
 from lib.paths import DISCORD, DISCORD_DB, ROOT
 
 # Strict: message bodies contain lines like "[ᛗ, ᛝ, ᛞ] -> [19, 21, 23]", which a
-# loose header pattern happily eats.
+# loose header pattern happily eats. A real header also always follows a blank
+# line (verified across all 109,917 messages), so a quoted header pasted
+# mid-paragraph stays body text instead of fabricating a message.
 HEADER = re.compile(r"^\[([0-9]{1,2}/[0-9]{1,2}/[0-9]{4}) ([0-9]{1,2}:[0-9]{2} [AP]M)\] (.+)$")
 BRACE_BLOCK = re.compile(r"^\{(Embed|Attachments|Reactions|Stickers)\}$")
+# Naive local time as DiscordChatExporter wrote it; the exports carry no zone.
 TIMESTAMP = "%m/%d/%Y %I:%M %p"
 PINNED = " (pinned)"
 
@@ -85,6 +89,13 @@ CREATE TABLE runes (
 );
 CREATE INDEX runes_msg ON runes(msg_id);
 CREATE VIRTUAL TABLE rune_fts USING fts5(canon, tokenize='trigram');
+
+-- What this db was built from, so a stale index is detectable.
+CREATE TABLE provenance (
+    file   TEXT PRIMARY KEY,  -- source path relative to the repo root
+    bytes  INTEGER NOT NULL,
+    sha256 TEXT NOT NULL
+);
 """
 
 
@@ -110,14 +121,18 @@ def channel_name_of(lines: list[str], default: str) -> str:
 
 def parse_file(path: Path) -> Iterator[Message]:
     channel = path.stem
-    lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
+    # strict: the exports are clean UTF-8; corruption should fail the build,
+    # not silently replace bytes.
+    lines = path.read_text(encoding="utf-8").split("\n")
     channel_name = channel_name_of(lines, default=channel)
 
     cur: Message | None = None
     in_extra = False
     seq = 0
+    prev_blank = True
     for lineno, ln in enumerate(lines, 1):
-        m = HEADER.match(ln)
+        m = HEADER.match(ln) if prev_blank else None
+        prev_blank = not ln.strip()
         if m:
             date, time, author = m.groups()
             try:
@@ -208,11 +223,14 @@ def build(db: sqlite3.Connection) -> tuple[int, int, Counter, Counter]:
             )
             db.execute("INSERT INTO msg_fts(rowid, body) VALUES (?,?)", (msg_id, body))
 
-            seen: set[tuple[str, str]] = set()
+            # Dedup on canon alone: the same sequence written twice in one
+            # message (or matched as both runic and runic-joined) is one fact,
+            # and duplicate rows made one message show up as two hits.
+            seen: set[str] = set()
             for run in runes.extract(body):
-                if len(run.canon) < MIN_CANON or (run.notation, run.canon) in seen:
+                if len(run.canon) < MIN_CANON or run.canon in seen:
                     continue
-                seen.add((run.notation, run.canon))
+                seen.add(run.canon)
                 rune_id += 1
                 per_notation[run.notation] += 1
                 db.execute(
@@ -226,9 +244,20 @@ def build(db: sqlite3.Connection) -> tuple[int, int, Counter, Counter]:
                     (rune_id, run.canon),
                 )
 
+    for path in sorted(DISCORD.glob("*.txt")):
+        data = path.read_bytes()
+        db.execute(
+            "INSERT INTO provenance(file, bytes, sha256) VALUES (?,?,?)",
+            (str(path.relative_to(ROOT)), len(data),
+             hashlib.sha256(data).hexdigest()),
+        )
+
     index_context(db)
     db.commit()
     db.execute("PRAGMA optimize")
+    # Leave no WAL sidecars behind: a read-only open fails if they go missing.
+    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    db.execute("PRAGMA journal_mode = DELETE")
     return msg_id, rune_id, per_channel, per_notation
 
 
