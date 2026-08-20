@@ -687,7 +687,7 @@ def _check_sentences_match_transcription(c: Corpus) -> tuple[str, bool, str]:
             ok_n += 1
         else:
             k = next(
-                (i for i, (a, b) in enumerate(zip(stream, text)) if a != b),
+                (i for i, (a, b) in enumerate(zip(stream, text, strict=False)) if a != b),
                 min(len(stream), len(text)),
             )
             bad.append(f"{sec.id}@{k}")

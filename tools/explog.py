@@ -60,7 +60,7 @@ def add(args: argparse.Namespace) -> int:
     entries = read_log()
     entry = {
         "id": max((e.get("id", 0) for e in entries), default=0) + 1,
-        "ts": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        "ts": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M"),
         "section": args.section,
         "method": args.method,
         "params": params,

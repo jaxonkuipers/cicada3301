@@ -188,7 +188,7 @@ def index_context(db: sqlite3.Connection) -> None:
         ).fetchall()
         stamps = [datetime.fromisoformat(ts) for _, ts, _ in rows]
 
-        def context(i: int) -> str:
+        def context(i: int, rows=rows, stamps=stamps) -> str:
             lo = max(i - CONTEXT_WINDOW, 0)
             hi = min(i + CONTEXT_WINDOW + 1, len(rows))
             return "\n".join(

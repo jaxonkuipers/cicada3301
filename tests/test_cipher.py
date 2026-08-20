@@ -22,7 +22,7 @@ def plaintext_of(sec_id):
 def skips_of(ct, want):
     """Ciphertext positions where the plaintext rune is the F interrupter."""
     return frozenset(
-        i for i, (x, p) in enumerate(zip(ct, want)) if p == 0 and x == 0
+        i for i, (x, p) in enumerate(zip(ct, want, strict=False)) if p == 0 and x == 0
     )
 
 
@@ -95,9 +95,9 @@ class TestPrimitives(unittest.TestCase):
     def test_beaufort_round_trips(self):
         pt = gp.spell("SOME WISDOM")
         key = gp.spell("DIVINITY")
-        ct = [(k - p) % 29 for p, k in zip(pt, (key * 9)[: len(pt)])]
+        ct = [(k - p) % 29 for p, k in zip(pt, (key * 9)[: len(pt)], strict=True)]
         self.assertEqual(cipher.beaufort_decrypt(ct, key), pt)
-        ct = [(p - k) % 29 for p, k in zip(pt, (key * 9)[: len(pt)])]
+        ct = [(p - k) % 29 for p, k in zip(pt, (key * 9)[: len(pt)], strict=True)]
         self.assertEqual(cipher.variant_beaufort_decrypt(ct, key), pt)
 
     def test_affine(self):

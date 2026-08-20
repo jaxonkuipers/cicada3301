@@ -52,7 +52,7 @@ def periodic_ioc(text: Sequence[int], period: int) -> float:
 
 def doublets(text: Sequence[int]) -> int:
     """Adjacent equal pairs. Uniform random expects n/29 ~= 3.45%."""
-    return sum(1 for a, b in zip(text, text[1:]) if a == b)
+    return sum(1 for a, b in zip(text, text[1:], strict=False) if a == b)
 
 
 def doublet_rate(text: Sequence[int]) -> float:
@@ -116,5 +116,5 @@ def kasiski_gaps(text: Sequence[int], min_len: int = 3) -> Counter:
     """Counter of gaps between repeated n-grams (for factoring by hand)."""
     gaps: Counter = Counter()
     for pos in repeats(text, min_len).values():
-        gaps.update(b - a for a, b in zip(pos, pos[1:]))
+        gaps.update(b - a for a, b in zip(pos, pos[1:], strict=False))
     return gaps
