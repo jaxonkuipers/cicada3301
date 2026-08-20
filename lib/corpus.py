@@ -168,9 +168,15 @@ class RuneText:
     positions: tuple[RunePos, ...]
     # Marks printed immediately after rune i, in order. Usually '' or one mark.
     marks_after: tuple[str, ...]
-    # Non-rune, non-mark printed content: numerals and punctuation, with the
-    # index of the rune they follow. The intro number squares live here.
+    # Non-rune, non-mark printed content -- numerals and punctuation -- with the
+    # index of the rune each run follows, or -1 for content printed before the
+    # first rune. Separators inside a run (`-` between numbers, `/` at its line
+    # ends) are kept in the text, so page-15's number square comes back as four
+    # `/`-delimited rows, not one digit soup.
     other: tuple[tuple[int, str], ...] = ()
+    # Marks printed before the first rune (page-51's `&` between the base-60
+    # block and the runes). Empty for almost every page.
+    leading_marks: str = ""
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -186,9 +192,14 @@ class RuneText:
         sliced = self.indices[key]
         start, _, step = key.indices(len(self.indices))
         # Only a contiguous slice can carry `other` across: with a step there is
-        # no longer a rune for each numeral to hang off.
+        # no longer a rune for each numeral to hang off. A leading entry (-1)
+        # belongs only to a slice that starts at the beginning.
         other = (
-            tuple((i - start, s) for i, s in self.other if 0 <= i - start < len(sliced))
+            tuple(
+                (i - start, s)
+                for i, s in self.other
+                if 0 <= i - start < len(sliced) or (start == 0 and i == -1)
+            )
             if step == 1
             else ()
         )
@@ -198,12 +209,13 @@ class RuneText:
             positions=self.positions[key],
             marks_after=self.marks_after[key],
             other=other,
+            leading_marks=self.leading_marks if start == 0 and step == 1 else "",
         )
 
-    def _split(self, ends_run) -> list[RuneText]:
+    def _split_at(self, ends_run) -> list[RuneText]:
         out, start = [], 0
         for i, m in enumerate(self.marks_after):
-            if ends_run(m):
+            if ends_run(i, m):
                 out.append(self[start : i + 1])
                 start = i + 1
         if start < len(self.indices):
@@ -212,11 +224,20 @@ class RuneText:
 
     def split_on(self, mark: str) -> list[RuneText]:
         """Split into runs delimited by `mark` (WORD, CLAUSE, ...)."""
-        return self._split(lambda m: mark in m)
+        return self._split_at(lambda i, m: mark in m)
 
     def words(self) -> list[RuneText]:
-        """Printed words. Any mark ends a word, not just the word separator."""
-        return self._split(bool)
+        """Printed words.
+
+        A word ends at any mark except a bare `/`: the line break falls
+        mid-word (0.3 prints CIRCUMFEREN/CE), so splitting on it understates
+        every word that happens to cross a printed line. Printed numerals and
+        punctuation (`;`, the page-10 `7`) also end the word they follow.
+        """
+        breaks = {i for i, _ in self.other}
+        return self._split_at(
+            lambda i, m: any(ch != LINE for ch in m) or i in breaks
+        )
 
     def word_lengths(self) -> list[int]:
         return [len(w) for w in self.words()]
@@ -230,27 +251,49 @@ class RuneText:
 
     @staticmethod
     def concat(parts: Iterable[RuneText]) -> RuneText:
-        parts = [p for p in parts if len(p)]
+        # A part with no runes can still carry content: page-50 is a full page
+        # of base-60 groups and not a single rune. Its `other` hangs off the
+        # last rune of the preceding part; anchor -1 makes that `i + off - 1`.
+        parts = [p for p in parts if len(p) or p.other or p.leading_marks]
         if not parts:
             raise ValueError("nothing to concatenate")
-        off, other = 0, []
+        off, other, leading = 0, [], ""
+        marks = []
         for p in parts:
-            other.extend((i + off, s) for i, s in p.other)
+            if off == 0 and not marks:
+                leading += p.leading_marks
+            elif p.leading_marks:
+                marks[-1] += p.leading_marks
+            other.extend((max(i + off, -1) if i < 0 else i + off, s) for i, s in p.other)
+            marks.extend(p.marks_after)
             off += len(p)
         return RuneText(
             gp=parts[0].gp,
             indices=tuple(i for p in parts for i in p.indices),
             positions=tuple(x for p in parts for x in p.positions),
-            marks_after=tuple(m for p in parts for m in p.marks_after),
+            marks_after=tuple(marks),
             other=tuple(other),
+            leading_marks=leading,
         )
+
+
+# Marks that may separate the groups INSIDE a run of printed numerals or
+# punctuation -- `3258-3222-.../` -- as opposed to the structural marks, which
+# always end such a run.
+_GROUP_SEPS = frozenset({WORD, CLAUSE, LINE})
 
 
 def _parse_transcription(gp: GematriaPrimus, page: str, raw: str) -> RuneText:
     """Transcription file -> RuneText.
 
     Source newlines are incidental; `/` is the printed line break. Marks and
-    numerals attach to the rune they follow, so nothing printed is discarded.
+    numerals attach to the rune they follow, so nothing printed is discarded --
+    including a page with no runes at all (page-50) and content printed before
+    a page's first rune (page-51, the paragraph numerals on pages 36-38).
+
+    Inside a run of non-rune content, `-` `.` `/` are that run's own group
+    separators and stay in its text: the page-15 number square keeps its four
+    rows. Separators trailing the run go back to the mark stream.
     """
     indices: list[int] = []
     positions: list[RunePos] = []
@@ -258,14 +301,24 @@ def _parse_transcription(gp: GematriaPrimus, page: str, raw: str) -> RuneText:
     other: list[tuple[int, str]] = []
     line, col = 1, 1
     pending_mark, pending_other = "", ""
+    leading_marks = ""
+
+    def end_other() -> None:
+        nonlocal pending_mark, pending_other
+        text = pending_other.rstrip("".join(_GROUP_SEPS))
+        pending_mark += pending_other[len(text):]
+        if text:
+            other.append((len(indices) - 1, text))
+        pending_other = ""
 
     def flush() -> None:
-        nonlocal pending_mark, pending_other
+        nonlocal pending_mark, leading_marks
+        end_other()
         if indices:
             marks[-1] += pending_mark
-            if pending_other:
-                other.append((len(indices) - 1, pending_other))
-        pending_mark, pending_other = "", ""
+        else:
+            leading_marks += pending_mark
+        pending_mark = ""
 
     for ch in raw:
         if ch in "\n\r":
@@ -276,11 +329,16 @@ def _parse_transcription(gp: GematriaPrimus, page: str, raw: str) -> RuneText:
             positions.append(RunePos(page, line, col))
             marks.append("")
             col += 1
-        elif ch in MARKS:
-            pending_mark += ch
-            if ch == LINE:
-                line += 1
-                col = 1
+            continue
+        if ch == LINE:
+            line += 1
+            col = 1
+        if ch in MARKS:
+            if pending_other and ch in _GROUP_SEPS:
+                pending_other += ch
+            else:
+                end_other()
+                pending_mark += ch
         elif not ch.isspace():
             pending_other += ch
     flush()
@@ -291,6 +349,7 @@ def _parse_transcription(gp: GematriaPrimus, page: str, raw: str) -> RuneText:
         positions=tuple(positions),
         marks_after=tuple(marks),
         other=tuple(other),
+        leading_marks=leading_marks,
     )
 
 
