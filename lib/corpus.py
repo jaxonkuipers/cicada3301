@@ -45,27 +45,11 @@ def is_rune(ch: str) -> bool:
 # Gematria Primus
 # --------------------------------------------------------------------------
 
-# Latin spellings that collapse to one rune, longest first within each rune.
-# Both aliases in the transliteration column are live: the table says "NG/ING"
-# and "IA/IO", and Cicada's own direct-transliteration sections use ING as a
-# TRIGRAPH (FOLLOWING -> 7 runes) and IO for the IA rune (BEHAVIORS, CONSUMPTION).
-# A speller built from the primary spellings alone runs every English word 3-5%
-# long, which silently biases anything measuring word length.
-_MULTI = {
-    2: ["TH"],
-    12: ["EO"],
-    21: ["ING", "NG"],
-    22: ["OE"],
-    25: ["AE"],
-    27: ["IA", "IO"],
-    28: ["EA"],
-}
-_SINGLE = {
-    "F": 0, "U": 1, "V": 1, "O": 3, "R": 4, "C": 5, "K": 5, "Q": 5,
-    "G": 6, "W": 7, "H": 8, "N": 9, "I": 10, "J": 11, "P": 13,
-    "X": 14, "S": 15, "Z": 15, "T": 16, "B": 17, "E": 18, "M": 19,
-    "L": 20, "D": 23, "A": 24, "Y": 26,
-}
+# Spellings the Gematria Primus table itself does not carry. Q appears in no
+# solved plaintext; solvers write it through C/K's rune when a candidate needs
+# one. Everything else -- U/V, C/K, S/Z, NG/ING, IA/IO -- comes from the
+# transliteration column of corpus/gematria-primus.csv.
+_EXTRA_SPELLINGS = {"Q": 5}
 
 
 @dataclass(frozen=True)
@@ -83,29 +67,52 @@ class GematriaPrimus:
         return {r: i for i, r in enumerate(self.runes)}
 
     @functools.cached_property
-    def _patterns(self) -> list[tuple[str, int]]:
-        pats = [(sp, r) for r, sps in _MULTI.items() for sp in sps]
-        pats.sort(key=lambda x: -len(x[0]))
-        return pats
-
-    @functools.cached_property
     def spellings(self) -> dict[str, int]:
         """Every Latin spelling `spell()` accepts -> rune index.
 
-        Flat view of the same table, for callers that need to recognise a
-        transliteration someone else wrote rather than produce one.
+        Built from the transliteration column of the CSV, so editing the table
+        edits the speller. Every alias is live: the table says "NG/ING" and
+        "IA/IO", and Cicada's own direct-transliteration sections use ING as a
+        TRIGRAPH (FOLLOWING -> 7 runes) and IO for the IA rune (BEHAVIORS,
+        CONSUMPTION). A speller built from the primary spellings alone runs
+        every English word 3-5% long, which silently biases anything measuring
+        word length.
         """
-        return _SINGLE | {sp: r for r, sps in _MULTI.items() for sp in sps}
+        out = {
+            alias: i
+            for i, tr in enumerate(self.translits)
+            for alias in tr.split("/")
+        }
+        return out | _EXTRA_SPELLINGS
+
+    @functools.cached_property
+    def _patterns(self) -> list[tuple[str, int]]:
+        pats = [(sp, r) for sp, r in self.spellings.items() if len(sp) > 1]
+        pats.sort(key=lambda x: -len(x[0]))
+        return pats
 
     def index(self, rune: str) -> int:
         return self._rune_to_index[rune]
 
     def to_indices(self, runes: str) -> list[int]:
-        """Rune string -> indices. Non-runes are skipped."""
-        return [self._rune_to_index[c] for c in runes if is_rune(c)]
+        """Rune string -> indices. Non-runes are skipped.
+
+        Skipped means skipped: a run through a dropped character comes out as
+        adjacent indices. Do not feed this text where such joins would be read
+        as evidence; extract clean runs first (lib.runes does).
+        """
+        return [self._rune_to_index[c] for c in runes if c in self._rune_to_index]
 
     def to_runes(self, indices: Iterable[int]) -> str:
-        return "".join(self.runes[i % self.N] for i in indices)
+        """Indices -> rune string. Raises on anything outside 0..28: cipher
+        code must reduce mod 29 itself, deliberately, not lean on silent
+        wrapping here."""
+        out = []
+        for i in indices:
+            if not 0 <= i < self.N:
+                raise ValueError(f"rune index {i} outside 0..{self.N - 1}")
+            out.append(self.runes[i])
+        return "".join(out)
 
     def prime(self, index: int) -> int:
         return self.primes[index]
@@ -118,10 +125,17 @@ class GematriaPrimus:
         `TWO ERRORS` into ᛏᚹᛟᚱᚱᚩᚱᛋ and `NOT HAVE` into ᚾᚩᚦᚪᚢᛖ, neither of which
         is what the book prints. Exact on all 94 solved sentences.
 
-        Case-insensitive; punctuation is dropped, so a plaintext does not have
-        to be cleaned first.
+        Case-insensitive; punctuation and digits are dropped, so a plaintext
+        does not have to be cleaned first. Rune input is a mistake (you want
+        `to_indices`) and raises. Digraph matching is greedy: right for every
+        word Cicada printed, but IONIC spells as IO-N-I-C and PINEAPPLE crosses
+        PINE|APPLE -- treat spelled lengths of arbitrary modern English as
+        approximate.
         """
+        if any(c in self._rune_to_index for c in english):
+            raise ValueError("spell() takes English text; use to_indices() for runes")
         out: list[int] = []
+        singles = self.spellings
         for word in unicodedata.normalize("NFKD", english).upper().split():
             w = "".join(c for c in word if c.isascii() and c.isalpha())
             i, n = 0, len(w)
@@ -132,12 +146,23 @@ class GematriaPrimus:
                         i += len(sp)
                         break
                 else:
-                    out.append(_SINGLE[w[i]])
+                    out.append(singles[w[i]])
                     i += 1
         return out
 
     def spell_runes(self, english: str) -> str:
         return self.to_runes(self.spell(english))
+
+    def unspell(self, indices: Iterable[int], sep: str = "") -> str:
+        """Rune indices -> readable Latin, one primary transliteration per rune.
+
+        The inverse you read candidate plaintext with: U for U/V, C for C/K,
+        NG for NG/ING, IA for IA/IO. Not round-trip exact -- EO is one rune but
+        unspells as two letters -- so compare candidates in rune indices, not
+        in unspelled strings.
+        """
+        prim = [tr.split("/")[0] for tr in self.translits]
+        return sep.join(prim[i] for i in indices)
 
 
 # --------------------------------------------------------------------------

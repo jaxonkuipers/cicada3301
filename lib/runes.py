@@ -37,8 +37,10 @@ _RUNE = f"[{corpus.RUNIC_FIRST}-{corpus.RUNIC_LAST}]"
 RUNE_RUN = re.compile(_RUNE + "+")
 # Rune text is normally printed with separators -- `-` between words, `.`
 # between clauses, `/` at a line end -- so a contiguous-run index misses any
-# query that spans one. Both forms are indexed.
-RUNE_JOINED = re.compile(f"{_RUNE}+(?:[-./|\\s]+{_RUNE}+)+")
+# query that spans one. Both forms are indexed. Spaces and tabs join; a
+# newline does not, or every row of a pasted rune grid would fuse into one
+# sequence that never existed.
+RUNE_JOINED = re.compile(f"{_RUNE}+(?:[-./| \\t]+{_RUNE}+)+")
 _WORDS = re.compile(r"[A-Za-z]+")
 _TRANSLIT_SEP = frozenset("-. /")
 _DIGIT_SPLIT = re.compile(r"[0-9]+|[^0-9]+")
@@ -63,21 +65,41 @@ def canon_of(indices: Iterable[int]) -> str:
     return "".join(CANON[i] for i in indices)
 
 
+def _gp_fragments(span: str, min_len: int) -> Iterator[tuple[str, list[int]]]:
+    """GP-rune stretches of `span`, broken at any rune outside the GP 29.
+
+    A non-GP rune (Younger Futhark kaun in a pasted comparison table, say) is a
+    break, not a skip: skipping it would assert an adjacency the source text
+    does not contain. Separator characters never break.
+    """
+    start = end = None
+    idx: list[int] = []
+    for j, c in enumerate(span):
+        if c in RUNE_TO_INDEX:
+            if start is None:
+                start = j
+            idx.append(RUNE_TO_INDEX[c])
+            end = j + 1
+        elif corpus.is_rune(c):
+            if len(idx) >= min_len:
+                yield span[start:end], idx
+            start = end = None
+            idx = []
+    if len(idx) >= min_len:
+        yield span[start:end], idx
+
+
 def _runic(text: str) -> Iterator[Run]:
     for m in RUNE_RUN.finditer(text):
-        run = m.group(0)
-        idx = [RUNE_TO_INDEX[c] for c in run if c in RUNE_TO_INDEX]
-        if len(idx) >= MIN_RUNIC:
-            yield Run("runic", run, canon_of(idx))
+        for raw, idx in _gp_fragments(m.group(0), MIN_RUNIC):
+            yield Run("runic", raw, canon_of(idx))
 
 
 def _runic_joined(text: str) -> Iterator[Run]:
     """Rune runs broken only by separators, rejoined: ᛋᚻᛖᚩᚷᛗᛡᚠ-ᛋᚣᛖᛝᚳ -> one run."""
     for m in RUNE_JOINED.finditer(text):
-        span = m.group(0)
-        idx = [RUNE_TO_INDEX[c] for c in span if c in RUNE_TO_INDEX]
-        if len(idx) >= MIN_JOINED:
-            yield Run("runic-joined", span, canon_of(idx))
+        for raw, idx in _gp_fragments(m.group(0), MIN_JOINED):
+            yield Run("runic-joined", raw, canon_of(idx))
 
 
 def _numeric(text: str) -> Iterator[Run]:
@@ -87,20 +109,20 @@ def _numeric(text: str) -> Iterator[Run]:
     digits, which int() then refuses.
     """
     run: list[int] = []
-    raw: list[str] = []
+    span: list[int] = []  # [start, end) of the run in `text`
 
     def take() -> Iterator[Run]:
         if len(run) >= MIN_NUMERIC:
-            yield Run("numeric", " ".join(raw), canon_of(run))
+            yield Run("numeric", text[span[0] : span[1]], canon_of(run))
         run.clear()
-        raw.clear()
+        span.clear()
 
     for m in _DIGIT_SPLIT.finditer(text):
         tok = m.group(0)
         if tok[0] in string.digits:  # not .isdigit(): '⁶' passes that
             if len(tok) <= 2 and int(tok) <= LAST_INDEX:
                 run.append(int(tok))
-                raw.append(tok)
+                span[:] = [span[0] if span else m.start(), m.end()]
                 continue
         elif _NUMERIC_SEP.fullmatch(tok):
             continue
@@ -115,18 +137,25 @@ def _translit(text: str) -> Iterator[Run]:
     the middle of a sentence: `so F-U-TH-O-R-C then` is a hit on six tokens, not
     a miss on eight.
 
-    Requires real digraphs present, otherwise ordinary prose full of single
-    letters produces constant false hits.
+    A run joined by `-` or `.` is explicit notation and indexes at any length:
+    F-U-L-M and I-N-T-R-O-D-U-C-T are citations, digraphs or not. A run held
+    together by spaces alone is ambiguous -- prose can string single letters
+    together -- so it must show real digraphs to count.
     """
     stretch: list[re.Match[str]] = []
+    seps: list[str] = []
 
     def take() -> Iterator[Run]:
         toks = [m.group(0).upper() for m in stretch]
         multi = sum(t in MULTI_TOKENS for t in toks)
-        if len(toks) >= MIN_TRANSLIT and (multi >= 2 or (len(toks) >= 6 and multi >= 1)):
+        punctuated = any(s in "-." for s in seps)
+        if len(toks) >= MIN_TRANSLIT and (
+            punctuated or multi >= 2 or (len(toks) >= 6 and multi >= 1)
+        ):
             raw = text[stretch[0].start() : stretch[-1].end()]
             yield Run("translit", raw, canon_of(TRANSLIT[t] for t in toks))
         stretch.clear()
+        seps.clear()
 
     prev_end = -1
     for m in _WORDS.finditer(text):
@@ -136,12 +165,15 @@ def _translit(text: str) -> Iterator[Run]:
             and m.start() - prev_end == 1
             and text[prev_end] in _TRANSLIT_SEP
         )
+        sep = text[prev_end] if adjacent else ""
         prev_end = m.end()
         if m.group(0).upper() not in TRANSLIT:
             yield from take()
             continue
         if not adjacent:
             yield from take()
+        elif stretch:
+            seps.append(sep)
         stretch.append(m)
     yield from take()
 
@@ -163,13 +195,21 @@ def canonicalise_query(q: str) -> tuple[str, str]:
     if runes:
         return canon_of(runes), "runic"
 
-    nums = re.findall(r"[0-9]{1,2}", q)
-    if len(nums) >= 2 and all(int(n) <= LAST_INDEX for n in nums):
-        return canon_of(int(n) for n in nums), "numeric"
+    toks = [t for t in _NUMERIC_SEP.split(q) if t]
+    if toks and all(t.isascii() and t.isdigit() for t in toks):
+        # All-digit queries must be explicitly separated indices: reading
+        # '2025' as runes 20,25 or '123' as 12,3 silently answers a question
+        # nobody asked.
+        if len(toks) >= 2 and all(len(t) <= 2 and int(t) <= LAST_INDEX for t in toks):
+            return canon_of(int(t) for t in toks), "numeric"
+        raise ValueError(
+            f"cannot read {q!r} as rune indices.\n"
+            "  separate them explicitly, one per rune in 0..28: '0 1 2' or '19-21-23'."
+        )
 
-    toks = [t for t in re.split(r"[^A-Za-z]+", q.upper()) if t]
-    if toks and all(t in TRANSLIT for t in toks):
-        return canon_of(TRANSLIT[t] for t in toks), "translit"
+    words = [t for t in re.split(r"[^A-Za-z]+", q.upper()) if t]
+    if words and all(t in TRANSLIT for t in words):
+        return canon_of(TRANSLIT[t] for t in words), "translit"
 
     raise ValueError(
         f"cannot read {q!r} as runes.\n"
