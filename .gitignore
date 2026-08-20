@@ -6,7 +6,4 @@ discord.db
 discord.db-wal
 discord.db-shm
 
-.env
-SPEC.md
-STATE.md
 .ruff_cache/

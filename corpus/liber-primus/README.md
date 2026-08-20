@@ -26,7 +26,7 @@ Upstream numbers the whole book 0–74 in one run. That appears as the `book_pag
 | Path | Contents |
 | --- | --- |
 | [`pages.csv`](pages.csv) | one row per page: section, status, which files exist, which Discord channel discusses it, and the upstream `book_page` |
-| [`sections.csv`](sections.csv) | one row per section: page range, headline, cipher, key, solution file |
+| [`sections.csv`](sections.csv) | one row per section: page range, headline, cipher, key, solution file. `first_rune` is the rune offset within `first_page` where the section truly begins — sections 0.8 and 0.11 start mid-page (offsets 9 and 91, fixed by their printed headlines), and the preceding section's text extends to that point |
 | [`sentences.csv`](sentences.csv) | 262 sentences, rune text aligned to English where solved (94 of 262) |
 | [`images/`](images/) | all 75 pages |
 | [`transcription/`](transcription/) | rune text for the 73 pages that carry runes |
@@ -111,6 +111,11 @@ a concatenation, not a page.
   outer whitespace and normalized to LF.
 - **`sentences.csv`** is a local index joining upstream's sentence-segmented transcription against its translation
   file on their shared sentence ids, collapsing upstream's double-spacing to single spaces.
+  One local repair on top of upstream: sentence `0.8.0.14` was missing the final ᛗ of the printed
+  word ᛚᚳᛇᛏᚷᚣᛟᛗ (page-20, printed line 6), verified against the page image; the transcription always
+  had it. With that rune restored, sentences.csv reconstructs every section's rune stream exactly,
+  except section 0.1's deliberate 76-rune tail gap (the unencrypted intro-05 word list, which
+  upstream's sentence file never segmented). `lib.corpus.verify()` enforces both facts.
 - **`solutions/`** is the English side of those same sentences, grouped by section.
 
 ## Page assignment evidence

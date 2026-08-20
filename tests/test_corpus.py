@@ -104,6 +104,48 @@ class TestOther(unittest.TestCase):
         self.assertEqual(len(t[:9]), 9)
 
 
+class TestSectionBoundaries(unittest.TestCase):
+    """Sections start at their headline, not at a page edge."""
+
+    def test_mid_page_starts(self):
+        for sec, n in (("0.8", 9), ("0.11", 91)):
+            s = c.section(sec)
+            self.assertEqual(s.first_rune, n)
+            t = s.text()
+            head = c.gp.to_indices(s.headline.replace(" ", ""))
+            self.assertEqual(list(t.indices[: len(head)]), head)
+
+    def test_preceding_section_gets_the_spill(self):
+        # 0.7 runs 9 runes into page-15 and owns the number square there.
+        t = c.section("0.7").text()
+        self.assertEqual(len(t), 1738)
+        self.assertEqual(t.positions[-1].page, "page-15")
+        self.assertTrue(any("3258" in s for _, s in t.other))
+        # 0.10 runs 91 runes into page-33.
+        t10 = c.section("0.10").text()
+        self.assertEqual(len(t10), 1524)
+        self.assertEqual(t10.positions[-1].page, "page-33")
+        # 0.8 and 0.11 no longer carry the foreign prefix.
+        self.assertEqual(len(c.section("0.8").text()), 1894)
+        self.assertEqual(len(c.section("0.11").text()), 1589)
+
+    def test_unsolved_stream_unmoved(self):
+        # Boundary shifts are internal to 0.5-0.12: the concatenated stream
+        # must not move.
+        self.assertEqual(c.unsolved.sha256(), corpus.EXPECTED_UNSOLVED_SHA)
+
+    def test_sentences_reconstruct_sections(self):
+        for sec in c.sections:
+            rows = sec.sentences()
+            if not rows:
+                continue
+            stream = [i for s in rows for i in c.gp.to_indices(s.runes)]
+            text = list(sec.text().indices)
+            gap = corpus.KNOWN_SENTENCE_GAPS.get(sec.id, 0)
+            self.assertEqual(text[: len(stream)], stream, sec.id)
+            self.assertEqual(len(text) - len(stream), gap, sec.id)
+
+
 class TestWords(unittest.TestCase):
     def test_line_break_does_not_split_words(self):
         t = c.section("0.3").text()  # identity cipher: plaintext alignment

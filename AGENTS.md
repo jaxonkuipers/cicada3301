@@ -4,7 +4,7 @@ Unsolved: 12,956 runes, sections 0.5–0.12, 56 of 58 body pages.
 
 ## Start here
 
-1. `python3 -m lib.corpus` — must print 12,956 runes, sha256 `73473a68c3fc4296…`, 94/94 sentences. On any mismatch, stop: the transcription or the parser changed and every derived result is void.
+1. `python3 -m lib.corpus` — every line must read PASS and exit 0, including 12,956 runes and sha256 `73473a68c3fc4296…`. On any FAIL, stop: the corpus or the parser changed and every derived result is void.
 2. `python3 -m tools.build_discord_db` — required on a fresh clone.
 3. Read `corpus/liber-primus/sections.csv`. Seven sections solved, eight unsolved, one cipher and key per section.
 4. Search the archive before claiming novelty. Record whether a method was disproved or merely abandoned.
@@ -15,6 +15,7 @@ Run from the repo root. Use `-m`; `python3 tools/dsearch.py` fails with `ModuleN
 
 ```
 python3 -m lib.corpus                 # drift check
+python3 -m unittest discover -s tests # regression tests
 python3 -m tools.build_discord_db     # build/rebuild discord.db (~3s)
 python3 -m tools.dsearch QUERY        # search discussion
 python3 -m tools.dsearch --runes SEQ  # search rune text, any notation
@@ -35,6 +36,7 @@ python3 -m tools.dsearch --channels   # list channels
 | --- | --- |
 | cipher and key per section | `corpus/liber-primus/sections.csv` |
 | page status, section, channel | `corpus/liber-primus/pages.csv` |
+| page images, sourced from onion | `corpus/liber-primus/images/` |
 | rune↔English, 94 solved | `corpus/liber-primus/sentences.csv` |
 | rune table | `corpus/gematria-primus.csv` via `c.gp` |
 | solved plaintext | `corpus/liber-primus/solutions/` |
@@ -65,4 +67,4 @@ Printed anomalies, all held in `RuneText.other`. Re-derive any of them with `c.p
 - `page-15` — 4×4 number square: rows 12670 / 12713 / 12350 / 8250, all columns differ. Unsolved.
 - `page-49`–`page-51` — 256 groups in base 60 over `0-9 A-Z a-x`, decoding to 256 bytes spanning 0..255, 161 distinct, not a permutation. `page-50` carries no runes at all. Unsolved.
 - `page-56` — 128 hex characters, a SHA-512 digest, the "deep web hash". Solved page, but the deep web hash itself is unsolved.
-- Stray numerals in otherwise pure rune text: `7` on page-10, `1` on page-36, `34` on page-37, `5` on page-38. Unexplained.
+- Numerals in otherwise pure rune text: `7` mid-line on page-10 (unexplained), and `1` `2` `3` `4` `5` at paragraph starts across pages 36–38 — an ordered list numbering, echoed by intro-11's leading `2`.

@@ -381,6 +381,11 @@ class Page:
 class Section:
     id: str
     first_page: str
+    # Rune offset within first_page where this section's text begins. Section
+    # boundaries are not page boundaries: 0.8 begins 9 runes into page-15 and
+    # 0.11 begins 91 runes into page-33, proven by where each printed headline
+    # sits. Zero for every other section.
+    first_rune: int
     last_page: str
     headline: str
     headline_form: str
@@ -399,7 +404,22 @@ class Section:
         return [p for p in self._corpus.pages if p.section == self.id]
 
     def text(self) -> RuneText:
-        return RuneText.concat([p.text() for p in self.pages()])
+        """The section's rune stream, starting at its true first rune.
+
+        Runes on this section's pages that precede `first_rune` belong to the
+        previous section, and this section's own text extends into the next
+        section's first page when that one starts mid-page. Getting this wrong
+        prepends foreign runes at position 0, which desynchronises any keyed
+        attack from its very first rune.
+        """
+        own = RuneText.concat([p.text() for p in self.pages()])
+        if self.first_rune:
+            own = own[self.first_rune :]
+        nxt = self._corpus.section_after(self.id)
+        if nxt and nxt.first_rune:
+            spill = self._corpus.page(nxt.first_page).text()[: nxt.first_rune]
+            own = RuneText.concat([own, spill])
+        return own
 
     def plaintext(self) -> str | None:
         if not self.solution_file:
@@ -449,6 +469,7 @@ class Corpus:
             Section(
                 id=r["section"],
                 first_page=r["first_page"],
+                first_rune=int(r["first_rune"]),
                 last_page=r["last_page"],
                 headline=r["headline"],
                 headline_form=r["headline_form"],
@@ -480,6 +501,12 @@ class Corpus:
     def section(self, section_id: str) -> Section:
         return self._sections_by_id[section_id]
 
+    def section_after(self, section_id: str) -> Section | None:
+        """The next section in book order, None after the last."""
+        ids = [s.id for s in self.sections]
+        i = ids.index(section_id) + 1
+        return self.sections[i] if i < len(self.sections) else None
+
     def unsolved_sections(self) -> list[Section]:
         return [self.section(s) for s in UNSOLVED_SECTIONS]
 
@@ -509,8 +536,30 @@ EXPECTED_UNSOLVED_SHA = (
     "73473a68c3fc4296f16009716d7fee18c9c102173e6e70d090c9494cc5bd9252"
 )
 
-# Sections whose cipher inverts in one line, so the speller can be checked rune
-# for rune rather than only on length.
+# One hash over every corpus file this module reads, so an edit anywhere --
+# a transliteration cell, a solution file, one rune of one transcription --
+# fails loudly instead of silently skewing results. Recompute with
+# `python3 -c "from lib import corpus; print(corpus.corpus_sha256())"` after
+# any deliberate corpus change, and say why in the commit.
+EXPECTED_CORPUS_SHA = "b2dfa75aeb14c95142ef07138ed30f3137b95575d6cc097963a0128a2b719933"
+
+# Exact counts of solved sentences with English, split by how they are checked.
+# Pinning them keeps the speller check from passing vacuously when
+# sentences.csv goes missing or unreadable.
+EXPECTED_RUNE_EXACT, EXPECTED_LEN_EXACT = 59, 35
+
+# Total characters of non-rune printed content (RuneText.other) across all
+# pages: the number squares, the base-60 block, the hash, stray numerals.
+# Guards against a parser regression silently dropping any of it again.
+EXPECTED_OTHER_CHARS = 1211
+
+# Sections whose sentences deliberately do not cover the whole rune stream.
+# 0.1: the last 76 runes are an unencrypted word list with page numbers
+# (intro-05), which upstream's sentence segmentation never included.
+KNOWN_SENTENCE_GAPS = {"0.1": 76}
+
+# Sections whose cipher inverts in one line, so the speller and the headline
+# can be checked rune for rune rather than only on length.
 _INVERTIBLE = {
     "0.0": lambda i: 28 - i,
     "0.2": lambda i: (28 - i + 3) % 29,
@@ -519,25 +568,28 @@ _INVERTIBLE = {
 }
 
 
-def verify() -> list[tuple[str, bool, str]]:
-    """Cheap checks that the data and the speller still behave.
-
-    Returns (name, passed, detail). Costs well under a second -- run it at the
-    start of a session, not as a ceremony.
-    """
-    c = load()
-    u = c.unsolved
-    out = [
-        ("unsolved rune count", len(u) == EXPECTED_UNSOLVED_LEN,
-         f"{len(u)} (expected {EXPECTED_UNSOLVED_LEN})"),
+def corpus_sha256() -> str:
+    """Fingerprint of every corpus file the loader reads."""
+    h = hashlib.sha256()
+    files = [
+        CORPUS / "gematria-primus.csv",
+        LP / "pages.csv",
+        LP / "sections.csv",
+        LP / "sentences.csv",
     ]
-    sha = u.sha256()
-    out.append(("unsolved stream sha256", sha == EXPECTED_UNSOLVED_SHA, sha[:16] + "..."))
+    files += sorted((LP / "transcription").glob("*.txt"))
+    files += sorted((LP / "solutions").glob("*.md"))
+    for f in files:
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()
 
-    # The speller against every solved sentence in the book. Invertible sections
-    # are checked rune for rune; the rest on length, which is what a speller
-    # regression actually breaks. This is where the ING trigraph, the IO alias
-    # and the word-boundary rule show up.
+
+def _check_speller(c: Corpus) -> tuple[str, bool, str]:
+    # The speller against every solved sentence in the book. Invertible
+    # sections are checked rune for rune; the rest on length, which is what a
+    # speller regression actually breaks. This is where the ING trigraph, the
+    # IO alias and the word-boundary rule show up.
     exact_ok = exact_n = len_ok = len_n = 0
     failed: list[str] = []
     for sec in c.sections:
@@ -559,12 +611,92 @@ def verify() -> list[tuple[str, bool, str]]:
                 len_ok += ok
             if not ok:
                 failed.append(s.id)
-    out.append(
-        ("speller vs solved sections", exact_ok == exact_n and len_ok == len_n,
-         f"{exact_ok}/{exact_n} rune-exact, {len_ok}/{len_n} length-exact"
-         + (f", first bad {failed[0]}" if failed else ""))
+    passed = (
+        exact_ok == exact_n == EXPECTED_RUNE_EXACT
+        and len_ok == len_n == EXPECTED_LEN_EXACT
     )
-    return out
+    return (
+        "speller vs solved sections", passed,
+        f"{exact_ok}/{exact_n} rune-exact, {len_ok}/{len_n} length-exact"
+        + (f", first bad {failed[0]}" if failed else ""),
+    )
+
+
+def _check_headlines(c: Corpus) -> tuple[str, bool, str]:
+    # Every section's text must begin with its printed headline; this is what
+    # pins the first_rune offsets in sections.csv. Runic headlines compare
+    # directly; english ones only where the cipher inverts in one line.
+    checked, bad = 0, []
+    for sec in c.sections:
+        t = sec.text().indices
+        if sec.headline_form == "runic":
+            head = tuple(c.gp.to_indices(sec.headline.replace(" ", "")))
+            start = t[: len(head)]
+        elif sec.id in _INVERTIBLE:
+            inv = _INVERTIBLE[sec.id]
+            head = tuple(c.gp.spell(sec.headline))
+            start = tuple(inv(i) for i in t[: len(head)])
+        else:
+            continue
+        checked += 1
+        if start != head:
+            bad.append(sec.id)
+    return (
+        "sections start at their headline", not bad,
+        f"{checked - len(bad)}/{checked} aligned" + (f", bad: {bad}" if bad else ""),
+    )
+
+
+def _check_sentences_match_transcription(c: Corpus) -> tuple[str, bool, str]:
+    # sentences.csv and transcription/ are two records of the same runes;
+    # nothing may diverge beyond the pinned, explained gaps.
+    ok_n, bad = 0, []
+    for sec in c.sections:
+        rows = sec.sentences()
+        if not rows:
+            continue
+        stream = [i for s in rows for i in c.gp.to_indices(s.runes)]
+        text = list(sec.text().indices)
+        gap = KNOWN_SENTENCE_GAPS.get(sec.id, 0)
+        if text[: len(stream)] == stream and len(text) - len(stream) == gap:
+            ok_n += 1
+        else:
+            k = next(
+                (i for i, (a, b) in enumerate(zip(stream, text)) if a != b),
+                min(len(stream), len(text)),
+            )
+            bad.append(f"{sec.id}@{k}")
+    return (
+        "sentences match transcription", not bad,
+        f"{ok_n} sections exact" + (f", diverged: {bad}" if bad else ""),
+    )
+
+
+def verify() -> list[tuple[str, bool, str]]:
+    """Cheap checks that the data and the speller still behave.
+
+    Returns (name, passed, detail). Costs well under a second -- run it at the
+    start of a session, not as a ceremony.
+    """
+    c = load()
+    u = c.unsolved
+    sha = u.sha256()
+    files_sha = corpus_sha256()
+    other_chars = sum(
+        len(s) for p in c.pages if p.transcription for _, s in p.text().other
+    )
+    return [
+        ("corpus files sha256", files_sha == EXPECTED_CORPUS_SHA,
+         files_sha[:16] + "..."),
+        ("unsolved rune count", len(u) == EXPECTED_UNSOLVED_LEN,
+         f"{len(u)} (expected {EXPECTED_UNSOLVED_LEN})"),
+        ("unsolved stream sha256", sha == EXPECTED_UNSOLVED_SHA, sha[:16] + "..."),
+        ("printed non-rune content", other_chars == EXPECTED_OTHER_CHARS,
+         f"{other_chars} chars (expected {EXPECTED_OTHER_CHARS})"),
+        _check_speller(c),
+        _check_headlines(c),
+        _check_sentences_match_transcription(c),
+    ]
 
 
 def main() -> int:
