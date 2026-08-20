@@ -566,7 +566,7 @@ EXPECTED_UNSOLVED_SHA = (
 # fails loudly instead of silently skewing results. Recompute with
 # `python3 -c "from lib import corpus; print(corpus.corpus_sha256())"` after
 # any deliberate corpus change, and say why in the commit.
-EXPECTED_CORPUS_SHA = "b2dfa75aeb14c95142ef07138ed30f3137b95575d6cc097963a0128a2b719933"
+EXPECTED_CORPUS_SHA = "92eeaf1ee4d2d034cf6b01784abddd1ba99124acb765c878b1141f8caa167c56"
 
 # Exact counts of solved sentences with English, split by how they are checked.
 # Pinning them keeps the speller check from passing vacuously when
