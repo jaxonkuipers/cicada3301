@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+
+# Regenerable from discord/ -- python3 -m tools.build_discord_db
+discord.db
+discord.db-wal
+discord.db-shm
+
+.env
+SPEC.md
+STATE.md
+.ruff_cache/

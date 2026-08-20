@@ -1,0 +1,16 @@
+section,first_page,last_page,headline,headline_form,status,cipher,key,solution_file,notes
+0.0,intro-01,intro-01,A WARNING,english,solved,substitution,inverted gematria (i -> 28-i),solutions/0.0-a-warning.md,
+0.1,intro-03,intro-05,WELCOME,english,solved,polyalphabetic substitution,"DIVINITY (23,10,1,10,9,10,16,26)",solutions/0.1-welcome.md,plaintext F is not encrypted
+0.2,intro-06,intro-09,A KOAN,english,solved,monoalphabetic substitution,"p=(28-c+3) mod 29",solutions/0.2-a-koan.md,inverted Gematria followed by shift 3
+0.3,intro-10,intro-13,THE LOSS OF DIVINITY,english,solved,none,,solutions/0.3-the-loss-of-divinity.md,direct Gematria Primus transliteration
+0.4,intro-14,intro-16,A KOAN,english,solved,polyalphabetic substitution,FIRFUMFERENFE,solutions/0.4-a-koan.md,plaintext F is not encrypted
+0.5,page-00,page-02,ᛋᚻᛖᚩᚷᛗᛡᚠ ᛋᚣᛖᛝᚳ,runic,unsolved,,,,
+0.6,page-03,page-07,ᛚᛄ ᛇᚻᛝᚳᚦᛏᚫᛄᛏᛉᚻ ᛏᚢᛟ,runic,unsolved,,,,
+0.7,page-08,page-14,ᛉᛁᛉᛗ ᚢᛉᛗᚳᚦᛈᚩᛒ,runic,unsolved,,,,
+0.8,page-15,page-22,ᛚᚢᛝᚾ ᚳᚢ ᛒᚾᛏᚠᛝ,runic,unsolved,,,,
+0.9,page-23,page-26,ᚢᚪ ᚹᛝᚷᛉᛞᚷ ᛁᛒᛁ ᛇᛏᛒᛁᚣ,runic,unsolved,,,,
+0.10,page-27,page-32,ᛗᛈᚣ ᛚᛋᚩᚪᚫᚻᛚᛖᛇᛁᛗᛚ ᛚᛋᚳᛈ,runic,unsolved,,,,
+0.11,page-33,page-39,ᛝᚦᛇ ᛁᚠᚳᛟᛇ,runic,unsolved,,,,
+0.12,page-40,page-55,ᚠᚾᛗ ᚣᚷᛞᚫᚻ,runic,unsolved,,,,
+0.13,page-56,page-56,AN END,english,solved,polyalphabetic substitution,"p_i=(c_i-phi(q_i)) mod 29",solutions/0.13-an-end.md,q_i is the i-th prime; plaintext F is not encrypted
+0.14,page-57,page-57,A PARABLE,english,solved,none,,solutions/0.14-a-parable.md,direct Gematria Primus transliteration
