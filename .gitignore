@@ -7,3 +7,6 @@ discord.db-wal
 discord.db-shm
 
 .ruff_cache/
+
+# Bulk attack output stays out of git; findings and scripts are committed.
+research/attacks/*/out/

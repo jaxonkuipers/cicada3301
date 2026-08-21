@@ -26,3 +26,12 @@ negative belongs here.
 - Nothing here is canonical. Promote a result into `corpus/` only when it is
   proven (rune-exact decryption), and update `lib.corpus.EXPECTED_CORPUS_SHA`
   when you do.
+
+## Layout discipline
+
+One directory per direction: `attacks/<slug>/`, the slug matching the
+`--method` logged in explog so the log entry and the code find each other.
+Commit the scripts and a short findings note; bulk output (candidate dumps,
+sweep logs) goes in that direction's `out/`, which is gitignored. A direction
+that dies keeps its scripts and its note — that is the reproducibility of the
+negative result — but never its dumps.

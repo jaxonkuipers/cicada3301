@@ -38,6 +38,7 @@ python3 -m tools.explog add|list|search  # the experiment log
 - Never eyeball candidate plaintexts in bulk. Rank with `fitness.score`, read only the outliers.
 - Never write analysis into `corpus/`. Derived work, scripts, and results go in `research/`; log runs with `tools.explog`.
 - Never edit the `EXPECTED_*` constants in `lib/corpus.py` to make a FAIL pass. They change only as part of a deliberate corpus change, recomputed and explained in that commit.
+- Never commit bulk output. One directory per direction under `research/attacks/<slug>/` (the slug matching the explog method); commit scripts and a findings note, keep candidate dumps and sweep logs in its `out/`, which is gitignored.
 
 ## Read data from data, not from this file
 
@@ -83,6 +84,10 @@ Proven by rune-exact decryption of 0.1, 0.4 and 0.13 (`tests/test_cipher.py`):
 - Plaintext F passes through unencrypted and the keystream does NOT advance.
 - A ciphertext F elsewhere is an ordinary encryption, so ciphertext F alone is ambiguous: interrupter positions are part of the key an attack must search.
 - Cicada mixes enciphered and plain stretches inside one section: 0.1 is enciphered only for runes 0–514, 0.4 only for 0–318. Consider the same for unsolved sections before declaring a method dead.
+
+## Think like the author
+
+Every solved key came from the book's own vocabulary and machinery, not from a dictionary: DIVINITY (0.1) is the book's central theme, FIRFUMFERENFE (0.4) is CIRCUMFERENCE — a solved-plaintext word — with every C corrupted to F, the interrupter rune itself, and 0.13's keystream is phi(primes), the totient of the same primes the Gematria Primus assigns each rune. Cicada wrote "the key is in front of you" (`corpus/communications/2012-01-key-in-front-of-you.asc`). Generate hypotheses from inside the material: solved plaintext vocabulary, headlines, the communications, gematria structure (primes, indices, 3301/1033), the printed anomalies below. Prefer schemes one conceptual step past the solved escalation — substitution, then keyed polyalphabetic with interrupter, then mathematical keystream — over arbitrary sweeps the community exhausted years ago.
 
 ## Printed anomalies
 
