@@ -32,6 +32,14 @@ class TestStats(unittest.TestCase):
         self.assertGreater(right, 1.6)
         self.assertGreater(right, wrong + 0.3)
 
+    def test_degenerate_input_ranks_last(self):
+        # A sweep hitting an empty candidate must rank it away, not crash and
+        # not sort it first. chi_squared is lower-is-better, hence inf.
+        freqs = fitness.english_frequencies()
+        self.assertEqual(stats.chi_squared([], freqs), float("inf"))
+        self.assertEqual(stats.ioc([]), 0.0)
+        self.assertEqual(stats.doublet_rate([]), 0.0)
+
     def test_find_and_repeats(self):
         t = [1, 2, 3, 9, 1, 2, 3, 9, 9]
         self.assertEqual(stats.find(t, [1, 2, 3]), [0, 4])
@@ -46,6 +54,31 @@ class TestFitness(unittest.TestCase):
         # comparability with logged experiment scores. Deliberate changes
         # update this pin and say so in the commit.
         self.assertEqual(len(fitness._training_indices()), 650_416)
+        # By content too: corpus/mabinogion and reference/english are outside
+        # corpus.EXPECTED_CORPUS_SHA, and a length pin misses an equal-length
+        # edit that would silently rescale every logged score.
+        self.assertEqual(
+            fitness.training_sha256(),
+            "8701a42c0c37292c7bb05a7ff369bb1ff6c88f35b722849a0bcb16f343fc4d46",
+        )
+
+    def test_solved_sections_are_in_the_training_text(self):
+        # Guards the module docstring against drifting back to claiming a
+        # hold-out it does not have: 0.3 and 0.14 ARE trained on, so absolute
+        # scores over solved plaintext are flattered by memorisation and only
+        # the ranking (test_judge_ranks_known_solution_first) is evidence.
+        train = list(fitness._training_indices())
+        for sec in ("0.3", "0.14"):
+            first = next(s.english for s in c.sentences if s.section == sec and s.english)
+            self.assertTrue(stats.find(train, c.gp.spell(first)), sec)
+
+    def test_windowed_covers_the_tail(self):
+        # Every rune must fall inside some window; range() stopping short left
+        # the last up-to-(step-1) runes scored by nothing.
+        for length in (1000, 1010, 1024, 137):
+            w = fitness.windowed(list(range(length)), size=100, step=25)
+            covered = {j for i, _ in w for j in range(i, i + 100)}
+            self.assertEqual(covered, set(range(length)), length)
 
     def test_english_scores_far_above_noise(self):
         rng = random.Random(1033)

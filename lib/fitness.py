@@ -8,10 +8,16 @@ surface only the ones worth reading.
 
 Training text, ~650k runes: the Mabinogion translation (corpus/mabinogion/),
 every solved English sentence of the book itself, and the public-domain
-wisdom prose in reference/english/ (see its README for provenance). Measured
-on held-out Cicada plaintext (0.3 and 0.14 excluded from training): English
-clears random noise by ~3.3 log10/rune, and by at least ~2.9 even on 50-rune
-segments (see tests/test_stats_fitness.py).
+wisdom prose in reference/english/ (see its README for provenance).
+
+The margin -- English clears random noise by ~3.3 log10/rune, and by at least
+~2.9 even on 50-rune segments -- was measured on a SEPARATELY BUILT held-out
+model with 0.3 and 0.14 excluded. The model shipped here trains on every
+solved sentence, 0.3 and 0.14 included, because at attack time those sections
+are known plaintext and there is no reason to spend them. So absolute scores
+on solved plaintext are flattered by memorisation: `score(0.3) = -4.22` is
+partly recall, not judgement. What survives the hold-out is the RANKING, which
+is all an attack uses (see tests/test_stats_fitness.py, which pins both).
 
     from lib import fitness
     fitness.score(indices)       # mean quadgram log10-prob per position
@@ -34,6 +40,7 @@ layer from solved, not dead.
 from __future__ import annotations
 
 import functools
+import hashlib
 import math
 from collections import Counter
 from collections.abc import Sequence
@@ -56,6 +63,20 @@ def _training_indices() -> tuple[int, ...]:
         for p in sorted((REFERENCE / "english").glob("*.txt"))
     ]
     return tuple(i for text in parts for i in c.gp.spell(text))
+
+
+def training_sha256() -> str:
+    """Fingerprint of the exact training text behind every score.
+
+    Every fitness number in research/experiments.jsonl is denominated in this
+    model; change the training text and none of them stay comparable. The
+    corpus-side inputs are covered by corpus.EXPECTED_CORPUS_SHA, but
+    corpus/mabinogion/ and reference/english/ are not, and a length pin alone
+    would miss an equal-length edit. Pinned by tests/test_stats_fitness.py.
+    """
+    h = hashlib.sha256()
+    h.update(bytes(_training_indices()))
+    return h.hexdigest()
 
 
 @functools.cache
@@ -92,7 +113,13 @@ def windowed(
     """
     if len(text) <= size:
         return [(0, score(text, n))]
-    return [(i, score(text[i : i + size], n)) for i in range(0, len(text) - size + 1, step)]
+    starts = list(range(0, len(text) - size + 1, step))
+    # `range` stops short whenever (len - size) is not a multiple of step, and
+    # the last up-to-(step-1) runes then sit in no window at all -- a blind spot
+    # in exactly the tail where a short enciphered stretch is hardest to see.
+    if starts[-1] != len(text) - size:
+        starts.append(len(text) - size)
+    return [(i, score(text[i : i + size], n)) for i in starts]
 
 
 @functools.cache

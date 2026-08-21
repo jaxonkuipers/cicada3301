@@ -105,6 +105,49 @@ class TestPrimitives(unittest.TestCase):
         ct = [(7 * p + 11) % 29 for p in pt]
         self.assertEqual(cipher.affine_decrypt(ct, 7, 11), pt)
 
+    def test_primitives_accept_any_iterable(self):
+        # Every primitive is annotated Iterable[int]. autokey_ct_decrypt reads
+        # the ciphertext twice (keystream, then text) and used to return []
+        # for a generator -- a silent "no candidates" inside a sweep.
+        ct = [3, 7, 11, 2, 5, 9, 14]
+        key = [1, 2, 3]
+        for fn in (
+            cipher.vigenere_decrypt,
+            cipher.beaufort_decrypt,
+            cipher.variant_beaufort_decrypt,
+            cipher.autokey_pt_decrypt,
+            cipher.autokey_ct_decrypt,
+        ):
+            want = fn(list(ct), key)
+            self.assertEqual(len(want), len(ct), fn.__name__)
+            self.assertEqual(fn((x for x in ct), key), want, fn.__name__)
+            self.assertEqual(fn(map(int, ct), key), want, fn.__name__)
+
+    def test_autokey_ct_skips_hold_the_keystream(self):
+        # Encrypt with the measured interrupter rule (plaintext F passes
+        # through, keystream holds), then decrypt with those positions skipped.
+        pt = [4, 0, 9, 3, 0, 12, 7, 5]
+        key = [2, 6]
+        ks, ct = list(key), []
+        used = 0
+        for x in pt:
+            if x == 0:
+                ct.append(0)
+                continue
+            y = (x + ks[used]) % 29
+            ct.append(y)
+            ks.append(y)
+            used += 1
+        skips = {i for i, x in enumerate(pt) if x == 0}
+        self.assertEqual(cipher.autokey_ct_decrypt(ct, key, skips), pt)
+
+    def test_short_running_key_raises_clearly(self):
+        # A key text shorter than the ciphertext used to escape as a bare
+        # StopIteration, which reads as an empty iterator to the caller.
+        with self.assertRaises(ValueError) as cm:
+            cipher.running_key_decrypt([1, 2, 3, 4, 5], [1, 2])
+        self.assertIn("exhausted", str(cm.exception))
+
     def test_skips_hold_keystream(self):
         # positions in skips pass through and do not consume the key
         ct = [5, 0, 6]

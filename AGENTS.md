@@ -70,9 +70,12 @@ cipher.phi_prime_decrypt(ct, skips={56})              # 0.13, exact
 stats.ioc(t); stats.periodic_ioc(t, k); stats.doublet_rate(t)
 stats.repeats(t); stats.kasiski_gaps(t); stats.find(haystack, needle)
 fitness.score(t)            # quadgram log-prob; rank with it, never threshold.
-                            # Held-out Cicada English clears same-length noise
-                            # by ~3 log10/rune, even on 50-rune segments --
-                            # read every outlier.
+                            # English clears same-length noise by ~3 log10/rune
+                            # even on 50-rune segments (held-out measurement) --
+                            # read every outlier. The SHIPPED model trains on
+                            # every solved sentence, so an absolute score over
+                            # known plaintext is flattered by memorisation; the
+                            # ranking is the evidence, not the number.
 fitness.windowed(t)         # per-window scores: a key decrypting only a
                             # stretch (0.1/0.4 pattern) shows here, not in the
                             # whole-stream mean.

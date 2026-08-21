@@ -67,7 +67,14 @@ def apply_stream(
         if i in skips:
             out.append(x)
             continue
-        out.append(op(x, next(stream)) % N)
+        try:
+            k = next(stream)
+        except StopIteration:
+            # A running key shorter than the ciphertext is the obvious mistake;
+            # a bare StopIteration here reads as an empty iterator to the
+            # caller (and becomes a RuntimeError inside a generator).
+            raise ValueError(f"keystream exhausted at position {i}") from None
+        out.append(op(x, k) % N)
     return out
 
 
@@ -176,7 +183,13 @@ def autokey_pt_decrypt(ct, key, skips=frozenset()) -> list[int]:
 
 
 def autokey_ct_decrypt(ct, key, skips=frozenset()) -> list[int]:
-    """Ciphertext autokey: keystream is key ++ ciphertext."""
+    """Ciphertext autokey: keystream is key ++ ciphertext.
+
+    `ct` is materialised because it is read twice -- once as the keystream,
+    once as the text. Every primitive here takes an Iterable, so a generator
+    or a map() must not come out as an empty decryption.
+    """
+    ct = list(ct)
     k = _norm_key(key)
     stream = iter(k + [x for i, x in enumerate(ct) if i not in skips])
     return apply_stream(ct, stream, lambda x, s: x - s, skips)

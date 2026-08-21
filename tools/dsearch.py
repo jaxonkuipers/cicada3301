@@ -6,6 +6,7 @@ Build the index first with `python3 -m tools.build_discord_db`.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sqlite3
@@ -105,7 +106,7 @@ def filters(args: argparse.Namespace) -> tuple[str, list]:
 def check_stale(db: sqlite3.Connection) -> None:
     """Warn when discord/ has changed since the index was built."""
     try:
-        rows = db.execute("SELECT file, bytes FROM provenance").fetchall()
+        rows = db.execute("SELECT file, bytes, sha256 FROM provenance").fetchall()
     except sqlite3.OperationalError:
         print(
             "note: index predates provenance tracking; rebuild with "
@@ -113,9 +114,16 @@ def check_stale(db: sqlite3.Connection) -> None:
             file=sys.stderr,
         )
         return
-    indexed = {r["file"]: r["bytes"] for r in rows}
+    # Compare content, not just size: an edit that happens to preserve the byte
+    # count would otherwise read as fresh with the hash sitting right there in
+    # the row. Hashing all of discord/ costs ~12ms, well under a search.
+    indexed = {r["file"]: (r["bytes"], r["sha256"]) for r in rows}
     current = {
-        str(p.relative_to(ROOT)): p.stat().st_size for p in DISCORD.glob("*.txt")
+        str(p.relative_to(ROOT)): (
+            p.stat().st_size,
+            hashlib.sha256(p.read_bytes()).hexdigest(),
+        )
+        for p in DISCORD.glob("*.txt")
     }
     if indexed != current:
         print(
@@ -134,12 +142,25 @@ def search_text(db: sqlite3.Connection, args: argparse.Namespace) -> tuple[list[
     # terms it was found by. A context document contains its own message, so the
     # second MATCH only supplies the score -- except under NOT, where a
     # neighbour holding the excluded term drops the hit.
+    #
+    # Each MATCH is evaluated ONCE in its own CTE and the two are intersected on
+    # rowid. Written as a plain join of the two virtual tables, SQLite puts
+    # ctx_fts in the inner loop and re-runs its full-text match per candidate
+    # row, so cost scales with the number of msg_fts hits rather than with
+    # --limit: measured on the shipped index, `the` (39,866 hits) took 88s that
+    # way and 3.0s this way, for identical results.
     sql = f"""
-        SELECT m.id, m.channel, m.seq, bm25(ctx_fts) AS score
-        FROM msg_fts
-        JOIN ctx_fts ON ctx_fts.rowid = msg_fts.rowid
-        JOIN messages m ON m.id = msg_fts.rowid
-        WHERE msg_fts MATCH ? AND ctx_fts MATCH ? {clause}
+        WITH ctx AS (
+            SELECT rowid AS rid, bm25(ctx_fts) AS score
+            FROM ctx_fts WHERE ctx_fts MATCH ?
+        ), msg AS (
+            SELECT rowid AS rid FROM msg_fts WHERE msg_fts MATCH ?
+        )
+        SELECT m.id, m.channel, m.seq, ctx.score AS score
+        FROM ctx
+        JOIN msg ON msg.rid = ctx.rid
+        JOIN messages m ON m.id = ctx.rid
+        WHERE 1 {clause}
         ORDER BY score LIMIT ?
     """
     rows, searched = fts_match(db, sql, args.query, [*params, args.limit], matches=2)
@@ -274,7 +295,14 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.ArgumentParser, 
     ap.add_argument("--full", action="store_true", help="no truncation")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--channels", action="store_true", help="list channels and exit")
-    return ap, ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    # SQLite reads LIMIT -1 as unbounded and LIMIT 0 as no rows; a negative
+    # --window makes an empty context range, so every hit renders as nothing
+    # while the footer still reports N hits. Refuse all three.
+    for name, lo in (("limit", 1), ("window", 0), ("chars", 1)):
+        if getattr(args, name) < lo:
+            ap.error(f"--{name} must be >= {lo}")
+    return ap, args
 
 
 def main(argv: list[str] | None = None) -> int:

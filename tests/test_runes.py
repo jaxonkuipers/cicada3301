@@ -60,6 +60,18 @@ class TestQuery(unittest.TestCase):
         canon, _ = runes.canonicalise_query("19-21-23-27")
         self.assertEqual(len(canon), 4)
 
+    def test_mixed_and_foreign_input_is_refused(self):
+        # Silently keeping only what parses turns 'F-U-TH-ᚠ' into a one-rune
+        # query and answers a question nobody asked.
+        for q in ("hello ᚠᚡ world", "F-U-TH-ᚠ", "ᚠᚢᚦ 3301", "ᚱᚲᚳ"):
+            with self.assertRaises(ValueError, msg=q):
+                runes.canonicalise_query(q)
+
+    def test_clean_runic_still_reads(self):
+        canon, notation = runes.canonicalise_query("ᚠᚢᚦ-ᚱᛁᚳ")
+        self.assertEqual(notation, "runic")
+        self.assertEqual(len(canon), 6)
+
     def test_translit_query(self):
         canon, notation = runes.canonicalise_query("F-U-TH")
         self.assertEqual(notation, "translit")

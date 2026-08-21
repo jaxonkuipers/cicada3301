@@ -76,8 +76,16 @@ def entropy(text: Sequence[int]) -> float:
 
 def chi_squared(text: Sequence[int], reference: Sequence[float]) -> float:
     """Fit of `text` against a reference distribution (see fitness module
-    for reference frequencies). Lower is closer."""
+    for reference frequencies). Lower is closer.
+
+    Empty text scores `inf`, not 0.0 and not a ZeroDivisionError: lower is
+    better here, so the degenerate candidate must sort last, the same way
+    `ioc` returns 0.0 to sort a degenerate candidate last under higher-is-
+    better. A sweep that hits an empty candidate should rank it away, not die.
+    """
     n = len(text)
+    if not n:
+        return math.inf
     c = Counter(text)
     return sum(
         (c[i] - n * reference[i]) ** 2 / (n * reference[i])

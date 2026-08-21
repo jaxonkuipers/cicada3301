@@ -396,10 +396,17 @@ class Page:
     _corpus: Corpus = field(repr=False, compare=False)
 
     def text(self) -> RuneText:
-        if not self.transcription:
-            return RuneText(self._corpus.gp, (), (), ())
-        raw = (LP / self.transcription).read_text(encoding="utf-8")
-        return _parse_transcription(self._corpus.gp, self.id, raw)
+        """This page's runes. Cached on the corpus: RuneText is immutable, and
+        a sweep that calls this inside its loop should not re-read and re-parse
+        the transcription every iteration."""
+        cache = self._corpus._page_texts
+        if self.id not in cache:
+            if not self.transcription:
+                cache[self.id] = RuneText(self._corpus.gp, (), (), ())
+            else:
+                raw = (LP / self.transcription).read_text(encoding="utf-8")
+                cache[self.id] = _parse_transcription(self._corpus.gp, self.id, raw)
+        return cache[self.id]
 
 
 @dataclass(frozen=True)
@@ -437,6 +444,9 @@ class Section:
         prepends foreign runes at position 0, which desynchronises any keyed
         attack from its very first rune.
         """
+        cache = self._corpus._section_texts
+        if self.id in cache:
+            return cache[self.id]
         own = RuneText.concat([p.text() for p in self.pages()])
         if self.first_rune:
             own = own[self.first_rune :]
@@ -444,6 +454,7 @@ class Section:
         if nxt and nxt.first_rune:
             spill = self._corpus.page(nxt.first_page).text()[: nxt.first_rune]
             own = RuneText.concat([own, spill])
+        cache[self.id] = own
         return own
 
     def plaintext(self) -> str | None:
@@ -470,6 +481,10 @@ def _rows(path: Path) -> list[dict[str, str]]:
 
 class Corpus:
     def __init__(self) -> None:
+        # Parsed-text caches for Page.text()/Section.text(). RuneText is a
+        # frozen dataclass of tuples, so sharing one is safe.
+        self._page_texts: dict[str, RuneText] = {}
+        self._section_texts: dict[str, RuneText] = {}
         gp_rows = sorted(_rows(CORPUS / "gematria-primus.csv"), key=lambda r: int(r["index"]))
         self.gp = GematriaPrimus(
             runes=tuple(r["rune"] for r in gp_rows),
@@ -573,6 +588,13 @@ EXPECTED_CORPUS_SHA = "92eeaf1ee4d2d034cf6b01784abddd1ba99124acb765c878b1141f8ca
 # sentences.csv goes missing or unreadable.
 EXPECTED_RUNE_EXACT, EXPECTED_LEN_EXACT = 59, 35
 
+# How many sections each of the other two semantic checks must actually cover.
+# Same reason as above: `not bad` is true of zero comparisons, so a check that
+# silently stops comparing anything -- a renamed CSV column, an unreadable
+# sentences.csv -- would report PASS while measuring nothing.
+EXPECTED_HEADLINES_CHECKED = 12
+EXPECTED_SENTENCE_SECTIONS = 15
+
 # Total characters of non-rune printed content (RuneText.other) across all
 # pages: the number squares, the base-60 block, the hash, stray numerals.
 # Guards against a parser regression silently dropping any of it again.
@@ -666,9 +688,12 @@ def _check_headlines(c: Corpus) -> tuple[str, bool, str]:
         checked += 1
         if start != head:
             bad.append(sec.id)
+    enough = checked == EXPECTED_HEADLINES_CHECKED
     return (
-        "sections start at their headline", not bad,
-        f"{checked - len(bad)}/{checked} aligned" + (f", bad: {bad}" if bad else ""),
+        "sections start at their headline", not bad and enough,
+        f"{checked - len(bad)}/{checked} aligned"
+        + (f", bad: {bad}" if bad else "")
+        + ("" if enough else f" (expected {EXPECTED_HEADLINES_CHECKED} checked)"),
     )
 
 
@@ -691,9 +716,12 @@ def _check_sentences_match_transcription(c: Corpus) -> tuple[str, bool, str]:
                 min(len(stream), len(text)),
             )
             bad.append(f"{sec.id}@{k}")
+    enough = ok_n + len(bad) == EXPECTED_SENTENCE_SECTIONS
     return (
-        "sentences match transcription", not bad,
-        f"{ok_n} sections exact" + (f", diverged: {bad}" if bad else ""),
+        "sentences match transcription", not bad and enough,
+        f"{ok_n} sections exact"
+        + (f", diverged: {bad}" if bad else "")
+        + ("" if enough else f" (expected {EXPECTED_SENTENCE_SECTIONS} sections)"),
     )
 
 

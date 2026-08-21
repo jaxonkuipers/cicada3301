@@ -12,6 +12,7 @@ keeps a private copy of the Gematria Primus.
 
 from __future__ import annotations
 
+import functools
 import re
 import string
 from collections.abc import Iterable, Iterator
@@ -19,19 +20,39 @@ from typing import NamedTuple
 
 from lib import corpus
 
-_GP = corpus.load().gp
-
-RUNE_TO_INDEX = {r: i for i, r in enumerate(_GP.runes)}
-TRANSLIT = _GP.spellings
-MULTI_TOKENS = frozenset(t for t in TRANSLIT if len(t) > 1)
-LAST_INDEX = _GP.N - 1
-
 # One symbol per rune index. Any single-character alphabet works; these survive
 # FTS5's trigram tokenizer without being split or folded.
 _ALPHABET = string.ascii_lowercase + string.digits
-if _GP.N > len(_ALPHABET):
-    raise RuntimeError(f"no single-character alphabet for {_GP.N} runes")
-CANON = _ALPHABET[: _GP.N]
+
+
+class _Tables(NamedTuple):
+    rune_to_index: dict[str, int]
+    translit: dict[str, int]
+    multi_tokens: frozenset[str]
+    last_index: int
+    canon: str
+
+
+@functools.cache
+def _tables() -> _Tables:
+    """The Gematria Primus, loaded on first use.
+
+    Built lazily rather than at import: reading corpus/ as a side effect of
+    `import lib.runes` makes every importer -- `dsearch --help` included --
+    fail when the corpus is absent, for a table it may never touch.
+    """
+    gp = corpus.load().gp
+    if gp.N > len(_ALPHABET):
+        raise RuntimeError(f"no single-character alphabet for {gp.N} runes")
+    translit = gp.spellings
+    return _Tables(
+        rune_to_index={r: i for i, r in enumerate(gp.runes)},
+        translit=translit,
+        multi_tokens=frozenset(t for t in translit if len(t) > 1),
+        last_index=gp.N - 1,
+        canon=_ALPHABET[: gp.N],
+    )
+
 
 _RUNE = f"[{corpus.RUNIC_FIRST}-{corpus.RUNIC_LAST}]"
 RUNE_RUN = re.compile(_RUNE + "+")
@@ -62,7 +83,8 @@ class Run(NamedTuple):
 
 
 def canon_of(indices: Iterable[int]) -> str:
-    return "".join(CANON[i] for i in indices)
+    canon = _tables().canon
+    return "".join(canon[i] for i in indices)
 
 
 def _gp_fragments(span: str, min_len: int) -> Iterator[tuple[str, list[int]]]:
@@ -72,13 +94,14 @@ def _gp_fragments(span: str, min_len: int) -> Iterator[tuple[str, list[int]]]:
     break, not a skip: skipping it would assert an adjacency the source text
     does not contain. Separator characters never break.
     """
+    rune_to_index = _tables().rune_to_index
     start = end = None
     idx: list[int] = []
     for j, c in enumerate(span):
-        if c in RUNE_TO_INDEX:
+        if c in rune_to_index:
             if start is None:
                 start = j
-            idx.append(RUNE_TO_INDEX[c])
+            idx.append(rune_to_index[c])
             end = j + 1
         elif corpus.is_rune(c):
             if len(idx) >= min_len:
@@ -120,7 +143,7 @@ def _numeric(text: str) -> Iterator[Run]:
     for m in _DIGIT_SPLIT.finditer(text):
         tok = m.group(0)
         if tok[0] in string.digits:  # not .isdigit(): '⁶' passes that
-            if len(tok) <= 2 and int(tok) <= LAST_INDEX:
+            if len(tok) <= 2 and int(tok) <= _tables().last_index:
                 run.append(int(tok))
                 span[:] = [span[0] if span else m.start(), m.end()]
                 continue
@@ -142,18 +165,19 @@ def _translit(text: str) -> Iterator[Run]:
     together by spaces alone is ambiguous -- prose can string single letters
     together -- so it must show real digraphs to count.
     """
+    translit, multi_tokens = _tables().translit, _tables().multi_tokens
     stretch: list[re.Match[str]] = []
     seps: list[str] = []
 
     def take() -> Iterator[Run]:
         toks = [m.group(0).upper() for m in stretch]
-        multi = sum(t in MULTI_TOKENS for t in toks)
+        multi = sum(t in multi_tokens for t in toks)
         punctuated = any(s in "-." for s in seps)
         if len(toks) >= MIN_TRANSLIT and (
             punctuated or multi >= 2 or (len(toks) >= 6 and multi >= 1)
         ):
             raw = text[stretch[0].start() : stretch[-1].end()]
-            yield Run("translit", raw, canon_of(TRANSLIT[t] for t in toks))
+            yield Run("translit", raw, canon_of(translit[t] for t in toks))
         stretch.clear()
         seps.clear()
 
@@ -167,7 +191,7 @@ def _translit(text: str) -> Iterator[Run]:
         )
         sep = text[prev_end] if adjacent else ""
         prev_end = m.end()
-        if m.group(0).upper() not in TRANSLIT:
+        if m.group(0).upper() not in translit:
             yield from take()
             continue
         if not adjacent:
@@ -189,27 +213,46 @@ def extract(text: str) -> Iterator[Run]:
 def canonicalise_query(q: str) -> tuple[str, str]:
     """Rune query in any notation -> (canonical string, notation detected).
 
-    Raises ValueError if it reads as none of them.
-    """
-    runes = [RUNE_TO_INDEX[c] for c in q if c in RUNE_TO_INDEX]
-    if runes:
-        return canon_of(runes), "runic"
+    Raises ValueError if it reads as none of them, or as more than one.
 
-    toks = [t for t in _NUMERIC_SEP.split(q) if t]
-    if toks and all(t.isascii() and t.isdigit() for t in toks):
+    Nothing is silently dropped. Keeping only the characters that happened to
+    parse turns `F-U-TH-ᚠ` into a one-rune query and `hello ᚠᚡ world` into
+    another, and then answers a question nobody asked -- the same failure the
+    all-digit branch below already refuses.
+    """
+    t = _tables()
+    runic = [c for c in q if corpus.is_rune(c)]
+    if runic:
+        foreign = sorted({c for c in runic if c not in t.rune_to_index})
+        if foreign:
+            raise ValueError(
+                f"{''.join(foreign)} is outside the Gematria Primus 29.\n"
+                "  drop it or write the sequence in indices: '0 1 2'."
+            )
+        stray = sorted({c for c in q if c.isascii() and c.isalnum()})
+        if stray:
+            raise ValueError(
+                f"{q!r} mixes runes with {''.join(stray)!r}.\n"
+                "  give one notation: runic codepoints, indices, "
+                "or transliterations."
+            )
+        return canon_of(t.rune_to_index[c] for c in runic), "runic"
+
+    toks = [x for x in _NUMERIC_SEP.split(q) if x]
+    if toks and all(x.isascii() and x.isdigit() for x in toks):
         # All-digit queries must be explicitly separated indices: reading
         # '2025' as runes 20,25 or '123' as 12,3 silently answers a question
         # nobody asked.
-        if len(toks) >= 2 and all(len(t) <= 2 and int(t) <= LAST_INDEX for t in toks):
-            return canon_of(int(t) for t in toks), "numeric"
+        if len(toks) >= 2 and all(len(x) <= 2 and int(x) <= t.last_index for x in toks):
+            return canon_of(int(x) for x in toks), "numeric"
         raise ValueError(
             f"cannot read {q!r} as rune indices.\n"
             "  separate them explicitly, one per rune in 0..28: '0 1 2' or '19-21-23'."
         )
 
-    words = [t for t in re.split(r"[^A-Za-z]+", q.upper()) if t]
-    if words and all(t in TRANSLIT for t in words):
-        return canon_of(TRANSLIT[t] for t in words), "translit"
+    words = [x for x in re.split(r"[^A-Za-z]+", q.upper()) if x]
+    if words and all(x in t.translit for x in words):
+        return canon_of(t.translit[x] for x in words), "translit"
 
     raise ValueError(
         f"cannot read {q!r} as runes.\n"
