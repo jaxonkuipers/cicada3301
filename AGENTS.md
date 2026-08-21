@@ -34,7 +34,7 @@ python3 -m tools.explog add|list|search  # the experiment log
 - Never write another rune-notation converter. Use `lib.runes`.
 - Never grep for runes. The same sequence appears as codepoints, as transliterations, and as indices, split by `-` `.` `/`. Grep finds one form and misses the rest.
 - Never treat `discord/` as evidence. It is unverified discussion.
-- Never write cipher arithmetic inline. `lib.cipher` is proven against every solved section; a private loop with a subtle interrupter bug produces plausible garbage.
+- Never write cipher arithmetic inline. `lib.cipher`'s atbash/shift/vigenere/phi-prime are proven rune-exact against the solved sections; a private loop with a subtle interrupter bug produces plausible garbage. Its autokey/beaufort/affine primitives are NOT measured against anything Cicada printed — read the module docstring before quoting coverage from one.
 - Never eyeball candidate plaintexts in bulk. Rank with `fitness.score`, read only the outliers.
 - Never write analysis into `corpus/`. Derived work, scripts, and results go in `research/`; log runs with `tools.explog`.
 - Never edit the `EXPECTED_*` constants in `lib/corpus.py` to make a FAIL pass. They change only as part of a deliberate corpus change, recomputed and explained in that commit.
@@ -65,6 +65,9 @@ c.gp.unspell(indices)       # rune indices -> readable Latin
 
 cipher.vigenere_decrypt(ct, key, skips=frozenset())   # skips = interrupted positions
 cipher.autokey_pt_decrypt(ct, key) / autokey_ct_decrypt / beaufort_decrypt
+                            # ^ no solved section uses these: unproven, and
+                            # their interrupter model is a CHOICE, not a
+                            # measurement. Say which in explog `coverage`.
 cipher.phi_prime_decrypt(ct, skips={56})              # 0.13, exact
 
 stats.ioc(t); stats.periodic_ioc(t, k); stats.doublet_rate(t)

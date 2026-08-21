@@ -49,6 +49,20 @@ HIGHEST_CHAR = "￿"
 DATE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
 
+class Searched(NamedTuple):
+    """Exactly what went to the index, so a caller can check it.
+
+    A rune query is canonicalised before it is matched, and a query read as
+    the wrong notation still returns hits -- confidently, for a sequence
+    nobody asked about. `query` is what the index matched on; `indices` is
+    that same thing in a form a human can compare against what they typed.
+    """
+
+    query: str  # FTS query for text; the canonical rune string for --runes
+    notation: str = ""  # "" for a text query; runic | numeric | translit
+    indices: tuple[int, ...] = ()  # rune queries only
+
+
 class Hit(NamedTuple):
     msg_id: int
     channel: str
@@ -133,7 +147,9 @@ def check_stale(db: sqlite3.Connection) -> None:
         )
 
 
-def search_text(db: sqlite3.Connection, args: argparse.Namespace) -> tuple[list[Hit], str]:
+def search_text(
+    db: sqlite3.Connection, args: argparse.Namespace
+) -> tuple[list[Hit], Searched]:
     clause, params = filters(args)
     # Rank on the neighbourhood, match on the message. BM25 divides by document
     # length, so scoring messages alone floats a one-word "autokey" above the
@@ -164,10 +180,12 @@ def search_text(db: sqlite3.Connection, args: argparse.Namespace) -> tuple[list[
         ORDER BY score LIMIT ?
     """
     rows, searched = fts_match(db, sql, args.query, [*params, args.limit], matches=2)
-    return [Hit(r["id"], r["channel"], r["seq"], "") for r in rows], searched
+    return [Hit(r["id"], r["channel"], r["seq"], "") for r in rows], Searched(searched)
 
 
-def search_runes(db: sqlite3.Connection, args: argparse.Namespace) -> tuple[list[Hit], str]:
+def search_runes(
+    db: sqlite3.Connection, args: argparse.Namespace
+) -> tuple[list[Hit], Searched]:
     try:
         canon, notation = runes.canonicalise_query(args.runes)
     except ValueError as e:
@@ -189,12 +207,20 @@ def search_runes(db: sqlite3.Connection, args: argparse.Namespace) -> tuple[list
         rows = db.execute(sql, (f'"{canon}"', canon, *params, args.limit)).fetchall()
     except sqlite3.OperationalError as e:
         raise die(f"rune query failed: {e}") from None
-    print(f"query: {len(canon)} runes, read as {notation}", file=sys.stderr)
+    indices = runes.indices_of(canon)
+    # Print the indices, not just the notation: a query read as the wrong
+    # notation returns hits either way, and this is the only place the
+    # difference is visible before the results scroll past.
+    print(
+        f"query: {len(canon)} runes, read as {notation}: "
+        f"{' '.join(str(i) for i in indices)}",
+        file=sys.stderr,
+    )
     return [
         Hit(r["id"], r["channel"], r["seq"],
             f"{r['notation']}: {' '.join(r['raw'].split())[:100]}")
         for r in rows
-    ], notation
+    ], Searched(canon, notation, tuple(indices))
 
 
 def windows(db: sqlite3.Connection, hits: list[Hit], w: int):
@@ -223,14 +249,30 @@ def windows(db: sqlite3.Connection, hits: list[Hit], w: int):
     return blocks, notes
 
 
-def render_json(blocks, notes: dict[int, str], args: argparse.Namespace, searched: str) -> None:
-    src = DISCORD.relative_to(ROOT)
-    out = {
+def json_header(args: argparse.Namespace, searched: Searched, hits: int) -> dict:
+    """The part of the JSON output that describes the query itself.
+
+    `searched` is what the index matched on -- the FTS query, or the canonical
+    rune string. It used to carry the notation on the rune path and the query
+    on the text path, so a machine caller could not tell what had been
+    searched from the field that claimed to say. `notation` and `indices` are
+    null for a text query.
+    """
+    return {
         "query": args.runes or args.query,
-        "searched": searched,
-        "hits": len(notes),
+        "searched": searched.query,
+        "notation": searched.notation or None,
+        "indices": list(searched.indices) or None,
+        "hits": hits,
         "conversations": [],
     }
+
+
+def render_json(
+    blocks, notes: dict[int, str], args: argparse.Namespace, searched: Searched
+) -> None:
+    src = DISCORD.relative_to(ROOT)
+    out = json_header(args, searched, len(notes))
     for channel, msgs in blocks:
         conv = {
             "channel": channel,
@@ -332,9 +374,7 @@ def main(argv: list[str] | None = None) -> int:
             # records the negative instead of treating it as a crash.
             if args.json:
                 json.dump(
-                    {"query": args.runes or args.query, "searched": searched,
-                     "hits": 0, "conversations": []},
-                    sys.stdout, ensure_ascii=False,
+                    json_header(args, searched, 0), sys.stdout, ensure_ascii=False
                 )
                 print()
             else:

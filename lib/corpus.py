@@ -60,7 +60,15 @@ class GematriaPrimus:
     primes: tuple[int, ...]
     translits: tuple[str, ...]
 
-    N = 29
+    @property
+    def N(self) -> int:
+        """Alphabet size, from the table rather than from a literal.
+
+        `lib.cipher` and `lib.stats` each carry their own `N = 29` because
+        they never load the corpus; tests/test_corpus.py pins all three to
+        this one so they cannot drift apart silently.
+        """
+        return len(self.runes)
 
     @functools.cached_property
     def _rune_to_index(self) -> dict[str, int]:
@@ -550,6 +558,10 @@ class Corpus:
     def unsolved_sections(self) -> list[Section]:
         return [self.section(s) for s in UNSOLVED_SECTIONS]
 
+    def _status_unsolved(self) -> tuple[str, ...]:
+        """The unsolved sections according to sections.csv's status column."""
+        return tuple(s.id for s in self.sections if not s.solved)
+
     @functools.cached_property
     def unsolved(self) -> RuneText:
         """Sections 0.5-0.12 in book order -- the 12,956 runes nobody has read."""
@@ -616,7 +628,13 @@ _INVERTIBLE = {
 
 
 def corpus_sha256() -> str:
-    """Fingerprint of every corpus file the loader reads."""
+    """Fingerprint of every corpus file the loader reads.
+
+    Scope is exactly that: the CSVs, the transcriptions and the solutions.
+    corpus/communications/ and corpus/liber-primus/images/ are never parsed
+    here and are not covered; corpus/mabinogion/ and reference/english/ feed
+    lib.fitness and are covered by `fitness.training_sha256()` instead.
+    """
     h = hashlib.sha256()
     files = [
         CORPUS / "gematria-primus.csv",
@@ -738,9 +756,16 @@ def verify() -> list[tuple[str, bool, str]]:
     other_chars = sum(
         len(s) for p in c.pages if p.transcription for _, s in p.text().other
     )
+    status = c._status_unsolved()
     return [
         ("corpus files sha256", files_sha == EXPECTED_CORPUS_SHA,
          files_sha[:16] + "..."),
+        # UNSOLVED_SECTIONS drives `c.unsolved`, and the status column drives
+        # everything a human reads. If a section is ever solved, both must
+        # move together or the 12,956-rune stream silently keeps it.
+        ("UNSOLVED_SECTIONS matches status column", status == UNSOLVED_SECTIONS,
+         f"{len(status)} unsolved by status"
+         + ("" if status == UNSOLVED_SECTIONS else f", csv says {status}")),
         ("unsolved rune count", len(u) == EXPECTED_UNSOLVED_LEN,
          f"{len(u)} (expected {EXPECTED_UNSOLVED_LEN})"),
         ("unsolved stream sha256", sha == EXPECTED_UNSOLVED_SHA, sha[:16] + "..."),

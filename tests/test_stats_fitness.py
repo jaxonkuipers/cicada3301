@@ -135,6 +135,34 @@ class TestFitness(unittest.TestCase):
         noise_best = max(s for _, s in fitness.windowed(noise))
         self.assertGreater(best, noise_best + 1.5)
 
+    def test_default_n_drives_a_key_search(self):
+        # The scorer is sparse at n=4 (~93% of noise positions take the floor),
+        # which makes it a ranker rather than a distance -- but NOT unusable
+        # for key search, because a search moves a key position and with it
+        # 1/k of the stream. Pins that coordinate ascent at the DEFAULT n
+        # still recovers an exact key, so nobody "fixes" the sparsity by
+        # dropping n in inner loops. 200 runes is where it becomes reliable;
+        # below ~100 it is unreliable at every n.
+        eng = c.gp.spell(" ".join(s.english for s in c.sentences if s.english))[:200]
+        rng = random.Random(3301)
+        for klen in (8, 13):
+            key = [rng.randrange(29) for _ in range(klen)]
+            ct = [(p + key[i % klen]) % 29 for i, p in enumerate(eng)]
+            guess = [rng.randrange(29) for _ in range(klen)]
+            best = fitness.score(cipher.vigenere_decrypt(ct, guess))
+            for _ in range(15):
+                moved = False
+                for i in range(klen):
+                    for v in range(29):
+                        trial = list(guess)
+                        trial[i] = v
+                        sc = fitness.score(cipher.vigenere_decrypt(ct, trial))
+                        if sc > best:
+                            best, guess, moved = sc, trial, True
+                if not moved:
+                    break
+            self.assertEqual(guess, key, f"key length {klen}")
+
     def test_english_frequencies_sum_to_one(self):
         freqs = fitness.english_frequencies()
         self.assertAlmostEqual(sum(freqs), 1.0, places=9)

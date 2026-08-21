@@ -7,7 +7,7 @@ Run: python3 -m unittest discover -s tests
 
 import unittest
 
-from lib import corpus
+from lib import cipher, corpus, stats
 
 c = corpus.load()
 
@@ -21,6 +21,16 @@ class TestDrift(unittest.TestCase):
     def test_verify_all_pass(self):
         for name, passed, detail in corpus.verify():
             self.assertTrue(passed, f"{name}: {detail}")
+
+
+class TestAlphabetSize(unittest.TestCase):
+    def test_one_alphabet_size_everywhere(self):
+        # gp.N is derived from the table; lib.cipher and lib.stats each carry
+        # their own literal because they never load the corpus. Nothing else
+        # would notice if they drifted apart.
+        self.assertEqual(c.gp.N, len(c.gp.runes))
+        self.assertEqual(c.gp.N, cipher.N)
+        self.assertEqual(c.gp.N, stats.N)
 
 
 class TestOther(unittest.TestCase):

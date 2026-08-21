@@ -66,6 +66,12 @@ _WORDS = re.compile(r"[A-Za-z]+")
 _TRANSLIT_SEP = frozenset("-. /")
 _DIGIT_SPLIT = re.compile(r"[0-9]+|[^0-9]+")
 _NUMERIC_SEP = re.compile(r"[\s,;:\[\]()\-|/]+")
+# A `-` immediately before a digit but not immediately after one is a MINUS
+# SIGN, not a separator: `8 -2`, `0,-1`, `-4 3`. `19-21-23` is index notation
+# and stays. Without this the sign is eaten and a difference vector or a
+# +/-1 matrix indexes as rune text that was never written.
+_SIGNED = re.compile(r"(?<![0-9])-[0-9]")
+_ROW_BREAK = frozenset("\n\r")
 
 # Below these lengths the notation is guesswork rather than rune text.
 MIN_RUNIC = 2
@@ -85,6 +91,17 @@ class Run(NamedTuple):
 def canon_of(indices: Iterable[int]) -> str:
     canon = _tables().canon
     return "".join(canon[i] for i in indices)
+
+
+def indices_of(canon: str) -> list[int]:
+    """Canonical string -> rune indices. Inverse of `canon_of`.
+
+    The canonical form is deliberately opaque (`abc`), so a caller that wants
+    to SHOW what it searched -- and catch a query that was read as the wrong
+    notation -- needs this to print it back as indices.
+    """
+    table = _tables().canon
+    return [table.index(c) for c in canon]
 
 
 def _gp_fragments(span: str, min_len: int) -> Iterator[tuple[str, list[int]]]:
@@ -125,11 +142,32 @@ def _runic_joined(text: str) -> Iterator[Run]:
             yield Run("runic-joined", raw, canon_of(idx))
 
 
+def _numeric_sep(tok: str) -> bool:
+    """True if `tok` separates two indices rather than ending the run.
+
+    A newline ends it. The rows of a pasted grid are separate sequences, the
+    same rule `RUNE_JOINED` follows above -- `\\s` in `_NUMERIC_SEP` would
+    otherwise fuse a 6x6 grid into one 36-rune sequence that never existed.
+
+    A `-` ends it too, unless the token is exactly `-`. Being the whole
+    non-digit token between two digit tokens, a lone `-` is `19-21-23`, index
+    notation; a `-` with anything else around it (` -`, `,-`, `--`, ` - `) is
+    the minus of `8 -2` or `0,-1`, and reading it as a separator turns a
+    difference vector into runes.
+    """
+    return (
+        _NUMERIC_SEP.fullmatch(tok) is not None
+        and not (_ROW_BREAK & set(tok))
+        and ("-" not in tok or tok == "-")
+    )
+
+
 def _numeric(text: str) -> Iterator[Run]:
     """Runs of >=4 integers all in 0..28, e.g. '[19, 21, 23, 27, 2, 14]'.
 
     ASCII digits only: `\\d` also matches superscripts and other scripts'
-    digits, which int() then refuses.
+    digits, which int() then refuses. See `_numeric_sep` for what holds a run
+    together: neither a newline nor a minus sign does.
     """
     run: list[int] = []
     span: list[int] = []  # [start, end) of the run in `text`
@@ -140,15 +178,22 @@ def _numeric(text: str) -> Iterator[Run]:
         run.clear()
         span.clear()
 
+    signed = False  # the next digit token is a magnitude, not an index
     for m in _DIGIT_SPLIT.finditer(text):
         tok = m.group(0)
         if tok[0] in string.digits:  # not .isdigit(): '⁶' passes that
-            if len(tok) <= 2 and int(tok) <= _tables().last_index:
+            if not signed and len(tok) <= 2 and int(tok) <= _tables().last_index:
                 run.append(int(tok))
                 span[:] = [span[0] if span else m.start(), m.end()]
                 continue
-        elif _NUMERIC_SEP.fullmatch(tok):
+            # Breaking before `-2` is not enough: its `2` must not open the
+            # next run either, or '8 -2 3 18 9 -4' still indexes '2 3 18 9'.
+            signed = False
+        elif _numeric_sep(tok):
+            signed = False
             continue
+        else:
+            signed = tok.endswith("-")
         yield from take()  # anything else ends the run
     yield from take()
 
@@ -215,10 +260,11 @@ def canonicalise_query(q: str) -> tuple[str, str]:
 
     Raises ValueError if it reads as none of them, or as more than one.
 
-    Nothing is silently dropped. Keeping only the characters that happened to
-    parse turns `F-U-TH-ᚠ` into a one-rune query and `hello ᚠᚡ world` into
-    another, and then answers a question nobody asked -- the same failure the
-    all-digit branch below already refuses.
+    Nothing is silently dropped, in ANY branch. Keeping only the characters
+    that happened to parse turns `F-U-TH-ᚠ` into a one-rune query, `F-U-TH-2`
+    into a three-rune one and `hello ᚠᚡ world` into another, and then answers
+    a question nobody asked. Each branch below refuses what it cannot read
+    rather than reading around it.
     """
     t = _tables()
     runic = [c for c in q if corpus.is_rune(c)]
@@ -243,7 +289,14 @@ def canonicalise_query(q: str) -> tuple[str, str]:
         # All-digit queries must be explicitly separated indices: reading
         # '2025' as runes 20,25 or '123' as 12,3 silently answers a question
         # nobody asked.
-        if len(toks) >= 2 and all(len(x) <= 2 and int(x) <= t.last_index for x in toks):
+        # `_SIGNED` first: splitting on `_NUMERIC_SEP` eats the minus of
+        # '0,-2,-4,-6', leaving four clean-looking indices that the source
+        # never wrote. Same rule the extractor applies (see `_numeric_sep`).
+        if (
+            len(toks) >= 2
+            and not _SIGNED.search(q)
+            and all(len(x) <= 2 and int(x) <= t.last_index for x in toks)
+        ):
             return canon_of(int(x) for x in toks), "numeric"
         raise ValueError(
             f"cannot read {q!r} as rune indices.\n"
@@ -252,6 +305,16 @@ def canonicalise_query(q: str) -> tuple[str, str]:
 
     words = [x for x in re.split(r"[^A-Za-z]+", q.upper()) if x]
     if words and all(x in t.translit for x in words):
+        # Splitting on non-letters discards digits, so 'F-U-TH-2' and
+        # 'F-U-TH 3301' would come back as the same three-rune query. Refuse
+        # the mixture the way the runic branch above does.
+        digits = sorted({c for c in q if c.isascii() and c.isdigit()})
+        if digits:
+            raise ValueError(
+                f"{q!r} mixes transliterations with {''.join(digits)!r}.\n"
+                "  give one notation: runic codepoints, indices, "
+                "or transliterations."
+            )
         return canon_of(t.translit[x] for x in words), "translit"
 
     raise ValueError(

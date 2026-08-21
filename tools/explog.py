@@ -57,7 +57,24 @@ def read_log() -> list[dict]:
     return out
 
 
+def known_sections() -> tuple[str, ...]:
+    """Section ids from sections.csv, plus 'all'."""
+    from lib import corpus
+
+    return ("all", *(s.id for s in corpus.load().sections))
+
+
 def add(args: argparse.Namespace) -> int:
+    # The log is how agents that cannot see each other avoid duplicating work,
+    # so a typo'd section is not a cosmetic problem: `--section 0.05` claims a
+    # target nobody else is looking at, and `list --section 0.5` never shows it.
+    valid = known_sections()
+    if args.section not in valid:
+        print(
+            f"unknown section {args.section!r}; expected one of {', '.join(valid)}",
+            file=sys.stderr,
+        )
+        return 2
     params = args.params
     if params:
         try:
@@ -117,7 +134,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     a = sub.add_parser("add", help="record an experiment")
-    a.add_argument("--section", required=True, help="e.g. 0.5, or 'all'")
+    a.add_argument(
+        "--section", required=True,
+        help="a section id from sections.csv, e.g. 0.5, or 'all'",
+    )
     a.add_argument("--method", required=True, help="what was run")
     a.add_argument("--params", default="", help="parameters, ideally JSON")
     a.add_argument("--coverage", default="", help="exactly what was searched")
@@ -125,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--notes", default="", help="scores, observations, links")
 
     ls = sub.add_parser("list", help="list entries")
-    ls.add_argument("--section")
+    ls.add_argument("--section", help="filter; not validated, unlike add")
     ls.add_argument("--verdict", choices=VERDICTS)
     ls.add_argument("--json", action="store_true")
 

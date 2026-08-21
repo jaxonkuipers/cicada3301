@@ -1,9 +1,24 @@
 """Cipher primitives over Z/29, the Gematria Primus alphabet.
 
 Everything takes and returns rune indices (ints in 0..28), never runes or
-Latin: convert at the edges with `c.gp`. Every primitive here decrypts the
-solved sections rune-for-rune from the keys recorded in sections.csv --
-tests/test_cipher.py holds those known-answer proofs.
+Latin: convert at the edges with `c.gp`.
+
+## What is proven, and what is only implemented
+
+MEASURED against the solved sections, rune for rune, from the keys recorded
+in sections.csv (tests/test_cipher.py holds the known-answer proofs):
+`atbash` (0.0), `shift_decrypt` (0.2), `vigenere_decrypt` and
+`vigenere_encrypt` (0.1 DIVINITY, 0.4 FIRFUMFERENFE), `phi_prime_decrypt`
+(0.13).
+
+NOT MEASURED: no solved section uses an autokey, a Beaufort or an affine
+cipher. `autokey_pt_decrypt`, `autokey_ct_decrypt`, `beaufort_decrypt`,
+`variant_beaufort_decrypt` and `affine_decrypt` are round-tripped against
+this module's own encryption model and against nothing else. They are
+hypotheses to attack with, not behaviour observed in the book. Where such a
+primitive also has to model the interrupter, the model is a CHOICE -- see
+`autokey_pt_decrypt` -- and a sweep covers the choice it made, not the
+cipher. Say which in the explog `coverage` field.
 
 ## The interrupter, as measured on the solved sections
 
@@ -165,8 +180,23 @@ def running_key_decrypt(ct, stream: Iterable[int], skips=frozenset()) -> list[in
 def autokey_pt_decrypt(ct, key, skips=frozenset()) -> list[int]:
     """Plaintext autokey: keystream is key ++ recovered plaintext.
 
-    Skipped positions neither consume nor extend the keystream, matching the
-    interrupter rule everywhere else.
+    Skipped positions neither consume nor extend the keystream.
+
+    OPEN QUESTION, not a measurement. The interrupter rule was observed on
+    0.1, 0.4 and 0.13, where the keystream is a repeating keyword or
+    phi(primes) and runs independently of the plaintext, so "the keystream
+    holds" has exactly one meaning. Here the keystream IS the plaintext, and
+    the rule splits in two:
+
+      (a) the interrupted rune neither consumes nor extends it -- implemented
+          here, and the same choice `autokey_ct_decrypt` makes;
+      (b) it extends the stream without consuming one, so a later position
+          still keys off it.
+
+    They give different plaintext. Nothing in the solved sections decides
+    between them, so an autokey sweep with `skips` non-empty has covered (a)
+    only. State that in the explog `coverage`, or the `disproved` is half a
+    claim.
     """
     k = _norm_key(key)
     stream = list(k)
@@ -184,6 +214,9 @@ def autokey_pt_decrypt(ct, key, skips=frozenset()) -> list[int]:
 
 def autokey_ct_decrypt(ct, key, skips=frozenset()) -> list[int]:
     """Ciphertext autokey: keystream is key ++ ciphertext.
+
+    Skipped ciphertext runes are left out of the keystream -- reading (a) of
+    the open question in `autokey_pt_decrypt`, and equally unmeasured.
 
     `ct` is materialised because it is read twice -- once as the keystream,
     once as the text. Every primitive here takes an Iterable, so a generator

@@ -27,6 +27,24 @@ Scores are comparable only at the same n and the same training set; higher is
 more English-like. Rank candidates against a same-length noise baseline and
 read every outlier -- never gate on an absolute score.
 
+## Sparse by construction, and why that is fine
+
+650k runes of training text yield 51,016 of the 29^4 possible quadgrams, so
+~93% of positions in a non-English candidate take the floor and two WRONG
+candidates often score identically -- a single-rune change to a noise
+candidate leaves the score untouched about two thirds of the time. That is
+what a ranker looks like, and it is the concrete reason for the
+rank-never-threshold rule above: an absolute score below English says almost
+nothing about how wrong a candidate is.
+
+It is NOT a reason to score key searches at a lower n. A real search moves a
+key position, which changes 1/k of the stream at once, not one rune.
+Measured 2026-08-21, coordinate ascent from 8 random restarts on clean
+Vigenere ciphertext recovers the exact key 8/8 at n=2, 3 AND 4 for key
+lengths 8 and 13 once the ciphertext reaches ~200 runes, and is unreliable
+at every n below ~100. Use the default and give it enough text; the n=4 case
+is pinned by tests/test_stats_fitness.py.
+
 This module judges FINAL English plaintext only. A correct intermediate stage
 of a multi-layer cipher (say, English still under a transposition) scores far
 below real English here while its unigram statistics give it away: measured,
