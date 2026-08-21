@@ -26,16 +26,22 @@ Verdicts:
   solved        rune-exact English for the stated section; log it, then keep
                 logging -- the other sections are still unsolved
 
-exit codes: 0 = fine (including an empty listing), 2 = bad arguments.
+exit codes: 0 = fine (including an empty listing), 2 = bad arguments, or a
+log too damaged to append to safely (see `add`).
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
-import fcntl
 import json
 import sys
+
+try:
+    import fcntl
+except ImportError:  # not POSIX; the log still works, just without locking
+    fcntl = None
 
 from lib.paths import ROOT
 
@@ -43,7 +49,30 @@ LOG = ROOT / "research" / "experiments.jsonl"
 VERDICTS = ("running", "disproved", "abandoned", "inconclusive", "promising", "solved")
 
 
-def read_log() -> list[dict]:
+@contextlib.contextmanager
+def _locked(f):
+    """Exclusive lock across read-ids-then-append, where the platform has one.
+
+    Concurrent agents logging at once must neither mint the same id nor
+    interleave partial lines. Without fcntl (Windows) the log still works,
+    single-writer.
+    """
+    if fcntl is None:
+        yield
+        return
+    fcntl.flock(f, fcntl.LOCK_EX)
+    try:
+        yield
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def read_log(bad: list[int] | None = None) -> list[dict]:
+    """Entries, skipping unparseable lines with a warning.
+
+    Pass `bad` to collect the line numbers that were skipped. Listing can live
+    with a hole; `add` cannot -- see there.
+    """
     if not LOG.exists():
         return []
     out = []
@@ -54,6 +83,8 @@ def read_log() -> list[dict]:
             out.append(json.loads(line))
         except json.JSONDecodeError as e:
             print(f"warning: {LOG.name}:{i} is not valid JSON: {e}", file=sys.stderr)
+            if bad is not None:
+                bad.append(i)
     return out
 
 
@@ -82,11 +113,21 @@ def add(args: argparse.Namespace) -> int:
         except json.JSONDecodeError:
             pass  # keep as the free-text string it was
     LOG.parent.mkdir(exist_ok=True)
-    # Exclusive lock across read-ids-then-append: concurrent agents logging at
-    # once must neither mint the same id nor interleave partial lines.
-    with open(LOG, "a", encoding="utf-8") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        entries = read_log()
+    with open(LOG, "a", encoding="utf-8") as f, _locked(f):
+        bad: list[int] = []
+        entries = read_log(bad)
+        if bad:
+            # An unreadable line may hold the highest id, so max(ids)+1 can
+            # mint one that already exists. Ids are how agents that cannot see
+            # each other refer to a claim, so a silent collision is worse than
+            # refusing: repair the line, then log.
+            print(
+                f"refusing to append: {LOG.name} has unreadable lines "
+                f"({', '.join(str(i) for i in bad)}), so the next id is unknown.\n"
+                "  fix or delete those lines, then run this again.",
+                file=sys.stderr,
+            )
+            return 2
         entry = {
             "id": max((e.get("id", 0) for e in entries), default=0) + 1,
             "ts": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M"),

@@ -233,6 +233,63 @@ class TestSearch(unittest.TestCase):
                 self.assertEqual(run(["first", *bad])[0], 2, bad)
 
 
+    def test_query_and_runes_are_mutually_exclusive(self):
+        # Running one and silently discarding the other answers a question
+        # nobody asked; the rune path used to win without saying so.
+        with archive():
+            self.assertEqual(run(["first", "--runes", "0 1 2 3"])[0], 2)
+
+    def test_stale_schema_is_diagnosed_not_blamed_on_the_query(self):
+        # Every OperationalError used to read as invalid FTS5 syntax, so a
+        # pre-ctx_fts index printed the wrong diagnosis and crashed anyway.
+        with archive() as root:
+            db = sqlite3.connect(root / "discord.db")
+            db.execute("DROP TABLE ctx_fts")
+            db.commit()
+            db.close()
+            err = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), \
+                 contextlib.redirect_stderr(err):
+                try:
+                    code = dsearch.main(["first"])
+                except SystemExit as e:
+                    code = e.code
+            self.assertEqual(code, 2)
+            self.assertIn("rebuild", err.getvalue())
+            self.assertNotIn("FTS5 syntax", err.getvalue())
+
+    def test_wide_context_window_needs_no_parameter_per_seq(self):
+        # The IN list grew with --limit x --window and raises "too many SQL
+        # variables" on SQLite before 3.32; contiguous ranges bound it.
+        with archive():
+            code, out = run(["--runes", "F-U-TH-O-R-C", "--window", "500"])
+            self.assertEqual(code, 0)
+            self.assertIn("alice", out)
+
+    def test_channels_honours_json_and_checks_staleness(self):
+        with archive():
+            code, out = run(["--channels", "--json"])
+            self.assertEqual(code, 0)
+            (ch,) = json.loads(out)["channels"]
+            self.assertEqual(ch["channel"], "54-55")
+            self.assertEqual(ch["messages"], 4)
+
+    def test_failed_build_leaves_the_previous_index_intact(self):
+        # executescript commits the schema, so unlinking first and failing
+        # mid-build left a valid but empty index that answers everything with
+        # nothing.
+        with archive() as root:
+            db = root / "discord.db"
+            before = db.read_bytes()
+            with mock.patch.object(bdb, "index_context", side_effect=RuntimeError("boom")):
+                with self.assertRaises(RuntimeError), \
+                     contextlib.redirect_stdout(io.StringIO()):
+                    bdb.main()
+            self.assertEqual(db.read_bytes(), before)
+            self.assertFalse((root / "discord.db.building").exists())
+            self.assertEqual(run(["first"])[0], 0)
+
+
 class TestExplog(unittest.TestCase):
     @contextlib.contextmanager
     def log(self):
@@ -294,6 +351,22 @@ class TestExplog(unittest.TestCase):
         with self.log() as path:
             path.write_text('{"id": 1, "section": "0.5"}\nnot json\n', encoding="utf-8")
             self.assertEqual(len(explog.read_log()), 1)
+
+    def test_corrupt_line_blocks_add_rather_than_minting_a_duplicate(self):
+        # An unreadable line may hold the highest id, so max(ids)+1 can mint
+        # one that already exists. Ids are how agents that cannot see each
+        # other refer to a claim.
+        with self.log() as path:
+            path.write_text(
+                '{"id": 1, "section": "0.5", "verdict": "running", "method": "a"}\n'
+                '{"id": 2, "section": "0.5", "verdict": "running", "method": "b" OOPS\n',
+                encoding="utf-8",
+            )
+            code, _ = self.call(
+                ["add", "--section", "0.5", "--method", "x", "--verdict", "running"]
+            )
+            self.assertEqual(code, 2)
+            self.assertEqual(len(path.read_text().splitlines()), 2)  # nothing appended
 
     def test_empty_log_lists_cleanly(self):
         with self.log():

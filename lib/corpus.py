@@ -224,25 +224,37 @@ class RuneText:
             return self.indices[key]
         sliced = self.indices[key]
         start, _, step = key.indices(len(self.indices))
-        # Only a contiguous slice can carry `other` across: with a step there is
-        # no longer a rune for each numeral to hang off. A leading entry (-1)
-        # belongs only to a slice that starts at the beginning.
+        # Only a contiguous slice can carry the printed structure across.
+        #
+        # `marks_after[i]` means "printed after rune i", which is a statement
+        # about the pair (i, i+1). Under any step the kept runes are no longer
+        # that pair, so a sliced mark stream describes adjacencies the page
+        # does not have: reversing 12 runes moved a word break from after
+        # rune 7 to after rune 4, and words() then split there -- silently,
+        # since indices itself reverses correctly. Reversal could be
+        # re-anchored by one, but a stride of 2 or 3 cannot be rescued by any
+        # shift, so drop the marks for every step != 1 the way `other` is
+        # already dropped. Reverse the words, not the stream, if you want the
+        # printed structure of reversed text.
+        contiguous = step == 1
+        # A leading entry (-1) belongs only to a slice that starts at the
+        # beginning.
         other = (
             tuple(
                 (i - start, s)
                 for i, s in self.other
                 if 0 <= i - start < len(sliced) or (start == 0 and i == -1)
             )
-            if step == 1
+            if contiguous
             else ()
         )
         return RuneText(
             gp=self.gp,
             indices=sliced,
             positions=self.positions[key],
-            marks_after=self.marks_after[key],
+            marks_after=self.marks_after[key] if contiguous else ("",) * len(sliced),
             other=other,
-            leading_marks=self.leading_marks if start == 0 and step == 1 else "",
+            leading_marks=self.leading_marks if start == 0 and contiguous else "",
         )
 
     def _split_at(self, ends_run) -> list[RuneText]:

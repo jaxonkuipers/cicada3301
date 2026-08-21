@@ -265,12 +265,22 @@ def main() -> int:
     if not DISCORD.is_dir():
         print(f"no exports at {DISCORD}", file=sys.stderr)
         return 1
+    # Build to a temp path and rename. executescript commits the schema, so
+    # unlinking first and failing mid-build used to leave a valid but empty
+    # discord.db behind -- an index that answers every query with nothing.
+    tmp = DISCORD_DB.with_name(DISCORD_DB.name + ".building")
+    for path in (tmp, *(tmp.with_name(tmp.name + s) for s in ("-wal", "-shm"))):
+        path.unlink(missing_ok=True)
+    try:
+        with closing(sqlite3.connect(tmp)) as db:
+            messages, rune_runs, per_channel, per_notation = build(db)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     for path in (DISCORD_DB, *(DISCORD_DB.with_name(DISCORD_DB.name + s)
                                for s in ("-wal", "-shm"))):
         path.unlink(missing_ok=True)
-
-    with closing(sqlite3.connect(DISCORD_DB)) as db:
-        messages, rune_runs, per_channel, per_notation = build(db)
+    tmp.replace(DISCORD_DB)
 
     print(f"{DISCORD_DB.relative_to(ROOT)}  ({DISCORD_DB.stat().st_size / 1e6:.1f} MB)")
     print(f"  {messages:,} messages over {len(per_channel)} channels")

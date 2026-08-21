@@ -99,7 +99,14 @@ def ngrams(text: Sequence[int], n: int) -> Counter:
 
 
 def find(haystack: Sequence[int], needle: Sequence[int]) -> list[int]:
-    """Every position where `needle` occurs in `haystack`."""
+    """Every position where `needle` occurs in `haystack`.
+
+    An empty needle raises rather than matching at all n+1 positions: that is
+    the correct answer to the wrong question, and as an attack primitive a
+    silent full-length hit list reads as a discovery.
+    """
+    if not needle:
+        raise ValueError("empty needle")
     m, out = len(needle), []
     needle = tuple(needle)
     for i in range(len(haystack) - m + 1):

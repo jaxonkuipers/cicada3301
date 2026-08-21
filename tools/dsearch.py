@@ -83,7 +83,16 @@ def fts_match(
     """
     try:
         return db.execute(sql, (*[query] * matches, *params)).fetchall(), query
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        # Only an FTS5 complaint means the query was the problem. A missing
+        # table is a stale index, and retrying the same statement with quoted
+        # terms both misdiagnoses it out loud and fails again anyway.
+        if "no such table" in str(e) or "no such column" in str(e):
+            raise die(
+                f"index is missing {str(e).split(': ')[-1]}: it predates this "
+                "version of the tool.\n"
+                "  rebuild with python3 -m tools.build_discord_db"
+            ) from None
         safe = " ".join(f'"{t}"' for t in re.findall(r"\w+", query))
         if not safe:
             raise die(f"nothing searchable in {query!r}") from None
@@ -232,11 +241,21 @@ def windows(db: sqlite3.Connection, hits: list[Hit], w: int):
 
     blocks = []
     for channel, seqs in want.items():
+        # One BETWEEN per contiguous run rather than one parameter per seq:
+        # the IN list grew with --limit x --window and had no bound, which on
+        # SQLite before 3.32 (999 parameters) raises "too many SQL variables".
+        ranges = []
+        for seq in sorted(seqs):
+            if ranges and seq == ranges[-1][1] + 1:
+                ranges[-1][1] = seq
+            else:
+                ranges.append([seq, seq])
         rows = db.execute(
             "SELECT id, ts, author, pinned, body, extra, seq, line, channel_name"
-            f" FROM messages WHERE channel = ? AND seq IN ({','.join('?' * len(seqs))})"
-            " ORDER BY seq",
-            (channel, *sorted(seqs)),
+            " FROM messages WHERE channel = ? AND ("
+            + " OR ".join("seq BETWEEN ? AND ?" for _ in ranges)
+            + ") ORDER BY seq",
+            (channel, *(x for r in ranges for x in r)),
         ).fetchall()
         run = []
         for r in rows:
@@ -324,8 +343,14 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.ArgumentParser, 
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=EXAMPLES,
     )
-    ap.add_argument("query", nargs="?", help="full-text query (FTS5 syntax works)")
-    ap.add_argument("--runes", help="rune sequence: runic, indices, or transliteration")
+    # A rune search and a text search are different queries against different
+    # indexes; running one while silently discarding the other is the last
+    # "answered a question nobody asked" path in this tool.
+    what = ap.add_mutually_exclusive_group()
+    what.add_argument("query", nargs="?", help="full-text query (FTS5 syntax works)")
+    what.add_argument(
+        "--runes", help="rune sequence: runic, indices, or transliteration"
+    )
     ap.add_argument("--channel", help="restrict to one channel, e.g. 54-55")
     ap.add_argument("--author", help="substring match on author")
     ap.add_argument("--since", help="YYYY or YYYY-MM-DD")
@@ -356,12 +381,25 @@ def main(argv: list[str] | None = None) -> int:
         db.row_factory = sqlite3.Row
 
         if args.channels:
-            for r in db.execute(
+            check_stale(db)
+            rows = db.execute(
                 "SELECT channel, channel_name, count(*) n, min(ts) lo, max(ts) hi"
                 " FROM messages GROUP BY channel ORDER BY n DESC"
-            ):
-                print(f"  {r['channel']:20} {r['n']:>7,}  "
-                      f"{r['lo'][:7]}..{r['hi'][:7]}  {r['channel_name']}")
+            ).fetchall()
+            if args.json:
+                json.dump(
+                    {"channels": [
+                        {"channel": r["channel"], "channel_name": r["channel_name"],
+                         "messages": r["n"], "first": r["lo"], "last": r["hi"]}
+                        for r in rows
+                    ]},
+                    sys.stdout, ensure_ascii=False, indent=1,
+                )
+                print()
+            else:
+                for r in rows:
+                    print(f"  {r['channel']:20} {r['n']:>7,}  "
+                          f"{r['lo'][:7]}..{r['hi'][:7]}  {r['channel_name']}")
             return 0
 
         if not args.query and not args.runes:

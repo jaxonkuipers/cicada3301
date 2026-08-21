@@ -129,6 +129,8 @@ def windowed(
     stretch lifts its windows enormously while barely moving the whole-stream
     mean: rank candidates by max window as well as by the whole.
     """
+    if step < 1 or size < n:
+        raise ValueError(f"need step >= 1 and size >= {n}, got step={step} size={size}")
     if len(text) <= size:
         return [(0, score(text, n))]
     starts = list(range(0, len(text) - size + 1, step))

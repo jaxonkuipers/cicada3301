@@ -107,6 +107,24 @@ class TestOther(unittest.TestCase):
         # page-51's leading '&' lands on the last rune before it
         self.assertIn("&", t.marks_after[65])
 
+    def test_strided_slices_drop_the_printed_structure(self):
+        # marks_after[i] means "printed after rune i" -- a claim about the pair
+        # (i, i+1). Under any step the kept runes are not that pair, so a
+        # sliced mark stream asserts adjacencies the page does not have.
+        # Reversing used to move a word break by one and split words there.
+        t = c.section("0.5").text()[:12]
+        self.assertTrue(any(t.marks_after))  # the forward slice does have marks
+        rev = t[::-1]
+        self.assertEqual(rev.indices, t.indices[::-1])  # runes still reverse
+        self.assertEqual(rev.marks_after, ("",) * len(rev))
+        self.assertEqual(len(rev.words()), 1)  # no fabricated break
+        self.assertEqual(rev.other, ())
+        self.assertEqual(rev.leading_marks, "")
+        every_other = t[::2]
+        self.assertEqual(every_other.marks_after, ("",) * len(every_other))
+        # A contiguous slice is untouched.
+        self.assertEqual(t[:8].marks_after, t.marks_after[:8])
+
     def test_slicing_other(self):
         t = c.page("page-15").text()
         self.assertEqual(len(t[:9].other), 1)  # tail keeps its square

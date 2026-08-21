@@ -40,6 +40,12 @@ class TestStats(unittest.TestCase):
         self.assertEqual(stats.ioc([]), 0.0)
         self.assertEqual(stats.doublet_rate([]), 0.0)
 
+    def test_empty_needle_is_refused(self):
+        # Matching at all n+1 positions is the right answer to the wrong
+        # question; as an attack primitive it reads as a discovery.
+        with self.assertRaises(ValueError):
+            stats.find(list(range(10)), [])
+
     def test_find_and_repeats(self):
         t = [1, 2, 3, 9, 1, 2, 3, 9, 9]
         self.assertEqual(stats.find(t, [1, 2, 3]), [0, 4])
@@ -71,6 +77,12 @@ class TestFitness(unittest.TestCase):
         for sec in ("0.3", "0.14"):
             first = next(s.english for s in c.sentences if s.section == sec and s.english)
             self.assertTrue(stats.find(train, c.gp.spell(first)), sec)
+
+    def test_windowed_refuses_degenerate_geometry(self):
+        # step=0 used to escape as "range() arg 3 must not be zero".
+        for kwargs in ({"step": 0}, {"step": -5}, {"size": 2}):
+            with self.assertRaises(ValueError, msg=kwargs):
+                fitness.windowed(list(range(500)), **kwargs)
 
     def test_windowed_covers_the_tail(self):
         # Every rune must fall inside some window; range() stopping short left

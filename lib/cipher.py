@@ -130,6 +130,8 @@ def atbash(text: Iterable[int]) -> list[int]:
 
 def affine_decrypt(ct: Iterable[int], a: int, b: int) -> list[int]:
     """Invert c = a*p + b. 29 is prime, so any a in 1..28 works."""
+    if a % N == 0:
+        raise ValueError(f"affine multiplier a={a} is 0 mod {N}; use 1..{N - 1}")
     inv = pow(a, -1, N)
     return [((x - b) * inv) % N for x in ct]
 
