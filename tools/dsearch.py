@@ -125,7 +125,7 @@ def check_stale(db: sqlite3.Connection) -> None:
         )
 
 
-def search_text(db: sqlite3.Connection, args: argparse.Namespace) -> list[Hit]:
+def search_text(db: sqlite3.Connection, args: argparse.Namespace) -> tuple[list[Hit], str]:
     clause, params = filters(args)
     # Rank on the neighbourhood, match on the message. BM25 divides by document
     # length, so scoring messages alone floats a one-word "autokey" above the

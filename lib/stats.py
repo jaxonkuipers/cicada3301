@@ -43,7 +43,12 @@ def periodic_ioc(text: Sequence[int], period: int) -> float:
     """Mean IoC of the `period` cosets: text[0::p], text[1::p], ...
 
     A repeating key of length p leaves each coset monoalphabetic, so the
-    right period spikes toward plaintext IoC while wrong ones stay flat.
+    right period spikes toward plaintext IoC while wrong ones stay flat --
+    ONLY for uninterrupted ciphers. Interrupters hold the keystream while
+    positions advance, desynchronising the cosets: on 0.1's real ciphertext
+    (key length 8, 11 interrupters in 515 runes) the true period measures
+    1.180 while period 9 measures 1.281. No spike at any period does not
+    exclude an interrupted periodic key.
     """
     cosets = [text[i::period] for i in range(period)]
     vals = [ioc(cs) for cs in cosets if len(cs) >= 2]

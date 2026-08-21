@@ -7,7 +7,8 @@ Unsolved: 12,956 runes, sections 0.5–0.12, 56 of 58 body pages.
 1. `python3 -m lib.corpus` — every line must read PASS and exit 0, including 12,956 runes and sha256 `73473a68c3fc4296…`. On any FAIL, stop: the corpus or the parser changed and every derived result is void.
 2. `python3 -m tools.build_discord_db` — required on a fresh clone.
 3. Read `corpus/liber-primus/sections.csv`. Seven sections solved, eight unsolved; cipher, key, true rune boundaries (`first_rune`), and measured interrupter behaviour per section.
-4. Search before claiming novelty: the archive (`tools.dsearch`) for what the community tried, the experiment log (`tools.explog`) for what this repo tried. Record every attempt; `disproved` requires stating exactly what was searched.
+4. Search before claiming novelty: the archive (`tools.dsearch`) for what the community tried, the experiment log (`tools.explog`) for what this repo tried. Record every attempt; `disproved` requires stating exactly what was searched. The frontier is `explog list --verdict promising` (and `abandoned`): start there, and end every session by logging your own leads with the numbers. Other agents may be working right now and cannot see you: log a `running` entry BEFORE starting an attack, then list again — if an earlier `running` entry covers the same target, pick different work.
+5. the text is presumed decipherable; a failed attack indicts the method and its coverage, never the puzzle; "no solution exists" is not a recordable conclusion
 
 ## Commands
 
@@ -36,6 +37,7 @@ python3 -m tools.explog add|list|search  # the experiment log
 - Never write cipher arithmetic inline. `lib.cipher` is proven against every solved section; a private loop with a subtle interrupter bug produces plausible garbage.
 - Never eyeball candidate plaintexts in bulk. Rank with `fitness.score`, read only the outliers.
 - Never write analysis into `corpus/`. Derived work, scripts, and results go in `research/`; log runs with `tools.explog`.
+- Never edit the `EXPECTED_*` constants in `lib/corpus.py` to make a FAIL pass. They change only as part of a deliberate corpus change, recomputed and explained in that commit.
 
 ## Read data from data, not from this file
 
@@ -66,21 +68,15 @@ cipher.phi_prime_decrypt(ct, skips={56})              # 0.13, exact
 
 stats.ioc(t); stats.periodic_ioc(t, k); stats.doublet_rate(t)
 stats.repeats(t); stats.kasiski_gaps(t); stats.find(haystack, needle)
-fitness.score(t)            # quadgram log-prob; English >2 log10/rune above noise
+fitness.score(t)            # quadgram log-prob; rank with it, never threshold.
+                            # Held-out Cicada English clears same-length noise
+                            # by ~3 log10/rune, even on 50-rune segments --
+                            # read every outlier.
 ```
 
 `spell()` handles the `ING` trigraph, `IO` = the `IA` rune, and per-word spelling so digraphs never cross a space; it is greedy, so treat spelled lengths of arbitrary modern English (IONIC, PINEAPPLE) as approximate. `words()` does not split at a bare `/` — that is a printed line break falling mid-word.
 
-## Statistical constraints on the unsolved text
-
-Measured over all 12,956 unsolved runes. Re-derive with `lib.stats` before relying on them.
-
-- **Unigram IoC = 1.000** (`stats.ioc`), against 1.000 for uniform random and ~1.78 for English through the Gematria Primus — and flat in every unsolved section individually. Any cipher leaving unigram structure — monoalphabetic substitution, short-key Vigenère — is already excluded.
-- **Doublet rate 0.66%** (86 adjacent equal runes), against 3.45% for uniform random: suppressed 5.2× below chance, in every unsolved section. The ciphertext is not random, and the suppression is a property of the cipher rather than the plaintext.
-
-Flat unigrams with a strong bigram anomaly points at output-dependent construction, where each rune depends on previous ciphertext. This is why community effort moved from classical substitution to autokey and interrupters from 2021 onward.
-
-## The interrupter, as measured (not folklore)
+## The interrupter
 
 Proven by rune-exact decryption of 0.1, 0.4 and 0.13 (`tests/test_cipher.py`):
 

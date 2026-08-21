@@ -6,18 +6,20 @@ through the Gematria Primus -- the same spelling the book itself uses -- so
 a hill-climb or a keyspace sweep can rank thousands of candidates and
 surface only the ones worth reading.
 
-Training text: the Mabinogion translation (corpus/mabinogion/, ~12k chars of
-prose) plus every solved English sentence of the book itself. Small by NLP
-standards but in-domain, and quadgram log-probability separates English from
-noise by a wide margin at these sizes (see tests/test_fitness.py for the
-measured gap).
+Training text, ~650k runes: the Mabinogion translation (corpus/mabinogion/),
+every solved English sentence of the book itself, and the public-domain
+wisdom prose in reference/english/ (see its README for provenance). Measured
+on held-out Cicada plaintext (0.3 and 0.14 excluded from training): English
+clears random noise by ~3.3 log10/rune, and by at least ~2.9 even on 50-rune
+segments (see tests/test_stats_fitness.py).
 
     from lib import fitness
     fitness.score(indices)       # mean quadgram log10-prob per position
     fitness.english_frequencies()  # per-rune distribution of English-via-GP
 
-Scores are comparable only at the same n; higher is more English-like.
-Random text scores near the floor; genuine English-via-GP around -2.4.
+Scores are comparable only at the same n and the same training set; higher is
+more English-like. Rank candidates against a same-length noise baseline and
+read every outlier -- never gate on an absolute score.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from collections import Counter
 from collections.abc import Sequence
 
 from lib import corpus
-from lib.paths import CORPUS
+from lib.paths import CORPUS, REFERENCE
 
 N_DEFAULT = 4
 _FLOOR_PENALTY = 2.0  # unseen n-grams score this many log10 units below the rarest seen
@@ -40,6 +42,10 @@ def _training_indices() -> tuple[int, ...]:
     c = corpus.load()
     parts = [(CORPUS / "mabinogion" / "translation.txt").read_text(encoding="utf-8")]
     parts += [s.english for s in c.sentences if s.english]
+    parts += [
+        p.read_text(encoding="utf-8")
+        for p in sorted((REFERENCE / "english").glob("*.txt"))
+    ]
     return tuple(i for text in parts for i in c.gp.spell(text))
 
 

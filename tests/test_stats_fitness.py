@@ -3,7 +3,7 @@
 import random
 import unittest
 
-from lib import corpus, fitness, stats
+from lib import cipher, corpus, fitness, stats
 
 c = corpus.load()
 
@@ -40,6 +40,13 @@ class TestStats(unittest.TestCase):
 
 
 class TestFitness(unittest.TestCase):
+    def test_training_set_pinned(self):
+        # Any change to the training text (corpus/mabinogion, sentences.csv,
+        # reference/english/) rescales every fitness score and breaks
+        # comparability with logged experiment scores. Deliberate changes
+        # update this pin and say so in the commit.
+        self.assertEqual(len(fitness._training_indices()), 650_416)
+
     def test_english_scores_far_above_noise(self):
         rng = random.Random(1033)
         english = c.gp.spell(
@@ -56,6 +63,29 @@ class TestFitness(unittest.TestCase):
             fitness.score(list(c.section("0.3").text().indices)),
             fitness.score(list(c.section("0.5").text().indices)) + 1.5,
         )
+
+    def test_judge_ranks_known_solution_first(self):
+        # The judge behind every attack: whatever the cipher hypothesis, the
+        # last step is fitness.score ranking candidates. This pins that a key
+        # sweep would surface 0.1's known key even with interrupters ignored
+        # (11 of them in 515 runes desync the tail; the head still lifts the
+        # score clear of every random key). If this fails, every negative
+        # sweep result since the regression is meaningless -- fix the scorer
+        # before trusting any new "disproved".
+        # (0.1's plaintext is in the training text, which flatters absolute
+        # scores; the ranking margin holds with it excluded too, measured
+        # 2026-08-21 on a held-out model: right key beat the best of 3000
+        # random keys by ~8 sd of the random-key spread.)
+        ct = list(c.section("0.1").text().indices)[:515]
+        right = fitness.score(cipher.vigenere_decrypt(ct, c.gp.spell("DIVINITY")))
+        rng = random.Random(7)
+        best_random = max(
+            fitness.score(
+                cipher.vigenere_decrypt(ct, [rng.randrange(29) for _ in range(8)])
+            )
+            for _ in range(500)
+        )
+        self.assertGreater(right, best_random + 0.1)
 
     def test_english_frequencies_sum_to_one(self):
         freqs = fitness.english_frequencies()

@@ -12,13 +12,19 @@ THIS log before re-running your own work. Every entry is one JSON line in
 research/experiments.jsonl, append-only, committed to git.
 
 Verdicts:
+  running       logged at the START of a run, so parallel agents (which do not
+                know about each other) can avoid duplicating work. Claim, then
+                list: if an earlier running entry already covers your target,
+                pick different work. Follow up with a final verdict when done;
+                a running entry hours old with no follow-up is stale -- take it.
   disproved     the method is excluded for the stated coverage -- say exactly
                 what keyspace was searched, or the claim is worthless
   abandoned     tried and stopped without exhausting anything; may be worth
                 resuming, say why it stopped
   inconclusive  ran to completion but the result decides nothing
   promising     a signal worth a follow-up; record the numbers
-  solved        it reads as English; you will not need this tool again
+  solved        rune-exact English for the stated section; log it, then keep
+                logging -- the other sections are still unsolved
 
 exit codes: 0 = fine (including an empty listing), 2 = bad arguments.
 """
@@ -27,13 +33,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import json
 import sys
 
 from lib.paths import ROOT
 
 LOG = ROOT / "research" / "experiments.jsonl"
-VERDICTS = ("disproved", "abandoned", "inconclusive", "promising", "solved")
+VERDICTS = ("running", "disproved", "abandoned", "inconclusive", "promising", "solved")
 
 
 def read_log() -> list[dict]:
@@ -57,19 +64,22 @@ def add(args: argparse.Namespace) -> int:
             params = json.loads(params)
         except json.JSONDecodeError:
             pass  # keep as the free-text string it was
-    entries = read_log()
-    entry = {
-        "id": max((e.get("id", 0) for e in entries), default=0) + 1,
-        "ts": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M"),
-        "section": args.section,
-        "method": args.method,
-        "params": params,
-        "coverage": args.coverage,
-        "verdict": args.verdict,
-        "notes": args.notes,
-    }
     LOG.parent.mkdir(exist_ok=True)
+    # Exclusive lock across read-ids-then-append: concurrent agents logging at
+    # once must neither mint the same id nor interleave partial lines.
     with open(LOG, "a", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        entries = read_log()
+        entry = {
+            "id": max((e.get("id", 0) for e in entries), default=0) + 1,
+            "ts": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M"),
+            "section": args.section,
+            "method": args.method,
+            "params": params,
+            "coverage": args.coverage,
+            "verdict": args.verdict,
+            "notes": args.notes,
+        }
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     print(f"logged #{entry['id']} ({args.verdict}) to {LOG.relative_to(ROOT)}")
     return 0
