@@ -20,6 +20,15 @@ segments (see tests/test_stats_fitness.py).
 Scores are comparable only at the same n and the same training set; higher is
 more English-like. Rank candidates against a same-length noise baseline and
 read every outlier -- never gate on an absolute score.
+
+This module judges FINAL English plaintext only. A correct intermediate stage
+of a multi-layer cipher (say, English still under a transposition) scores far
+below real English here while its unigram statistics give it away: measured,
+transposed 0.3 plaintext scores -6.9 (noise -7.6, English -4.2) but keeps
+ioc 1.77 and chi-squared 71 vs English frequencies (noise: 19,000+). Judge
+intermediate stages with lib.stats (ioc, chi_squared, doublet_rate), not with
+this score -- a flat-fitness candidate with English-like unigram stats is one
+layer from solved, not dead.
 """
 
 from __future__ import annotations
@@ -69,6 +78,21 @@ def score(text: Sequence[int], n: int = N_DEFAULT) -> float:
         logs.get(tuple(text[i : i + n]), floor) for i in range(len(text) - n + 1)
     )
     return total / (len(text) - n + 1)
+
+
+def windowed(
+    text: Sequence[int], size: int = 100, step: int = 25, n: int = N_DEFAULT
+) -> list[tuple[int, float]]:
+    """Score overlapping windows: [(start, score), ...].
+
+    Cicada mixes enciphered and plain stretches inside one section (0.1 and
+    0.4, measured), so a correct key may decrypt only part of a stream. The
+    stretch lifts its windows enormously while barely moving the whole-stream
+    mean: rank candidates by max window as well as by the whole.
+    """
+    if len(text) <= size:
+        return [(0, score(text, n))]
+    return [(i, score(text[i : i + size], n)) for i in range(0, len(text) - size + 1, step)]
 
 
 @functools.cache

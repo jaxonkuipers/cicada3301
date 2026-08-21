@@ -87,6 +87,21 @@ class TestFitness(unittest.TestCase):
         )
         self.assertGreater(right, best_random + 0.1)
 
+    def test_windowed_finds_a_partial_stretch(self):
+        # Cicada mixes enciphered and plain stretches (0.1, 0.4): a correct
+        # key decrypting only 100 of 1000 runes must still surface. Whole-
+        # stream ranking sees it weakly; the windowed max sees it decisively.
+        rng = random.Random(42)
+        eng = c.gp.spell(
+            "THE HIDDEN PATTERN EMERGES WHEN THE SEEKER STOPS FORCING THE "
+            "ANSWER AND BEGINS TO LISTEN TO THE STRUCTURE OF THE PROBLEM"
+        )[:100]
+        noise = [rng.randrange(29) for _ in range(1000)]
+        mixed = noise[:400] + eng + noise[500:]
+        best = max(s for _, s in fitness.windowed(mixed))
+        noise_best = max(s for _, s in fitness.windowed(noise))
+        self.assertGreater(best, noise_best + 1.5)
+
     def test_english_frequencies_sum_to_one(self):
         freqs = fitness.english_frequencies()
         self.assertAlmostEqual(sum(freqs), 1.0, places=9)

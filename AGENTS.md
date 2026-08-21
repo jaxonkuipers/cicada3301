@@ -73,6 +73,13 @@ fitness.score(t)            # quadgram log-prob; rank with it, never threshold.
                             # Held-out Cicada English clears same-length noise
                             # by ~3 log10/rune, even on 50-rune segments --
                             # read every outlier.
+fitness.windowed(t)         # per-window scores: a key decrypting only a
+                            # stretch (0.1/0.4 pattern) shows here, not in the
+                            # whole-stream mean.
+                            # fitness judges FINAL English only. Judge multi-
+                            # stage intermediates with stats.ioc/chi_squared:
+                            # English under a transposition keeps ioc ~1.77
+                            # while scoring near noise on quadgrams.
 ```
 
 `spell()` handles the `ING` trigraph, `IO` = the `IA` rune, and per-word spelling so digraphs never cross a space; it is greedy, so treat spelled lengths of arbitrary modern English (IONIC, PINEAPPLE) as approximate. `words()` does not split at a bare `/` — that is a printed line break falling mid-word.
