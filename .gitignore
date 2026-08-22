@@ -5,6 +5,7 @@ __pycache__/
 discord.db
 discord.db-wal
 discord.db-shm
+discord.db.building*
 
 .ruff_cache/
 

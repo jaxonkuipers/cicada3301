@@ -115,15 +115,15 @@ class GematriaPrimus:
         """Indices -> rune string. Raises on anything outside 0..28: cipher
         code must reduce mod 29 itself, deliberately, not lean on silent
         wrapping here."""
-        out = []
-        for i in indices:
-            if not 0 <= i < self.N:
-                raise ValueError(f"rune index {i} outside 0..{self.N - 1}")
-            out.append(self.runes[i])
-        return "".join(out)
+        return "".join(self.runes[self._check(i)] for i in indices)
+
+    def _check(self, i: int) -> int:
+        if not 0 <= i < self.N:
+            raise ValueError(f"rune index {i} outside 0..{self.N - 1}")
+        return i
 
     def prime(self, index: int) -> int:
-        return self.primes[index]
+        return self.primes[self._check(index)]
 
     def spell(self, english: str) -> list[int]:
         """English -> rune indices, with the ING trigraph and the IO alias.
@@ -168,9 +168,14 @@ class GematriaPrimus:
         NG for NG/ING, IA for IA/IO. Not round-trip exact -- EO is one rune but
         unspells as two letters -- so compare candidates in rune indices, not
         in unspelled strings.
+
+        Range-checked like `to_runes`, and for the same reason: Python's
+        negative indexing made unspell([-1]) return 'EA' and prime(-1) return
+        109. This is the function candidate plaintext is READ with, so an
+        off-by-one surfaced as plausible Latin instead of an exception.
         """
         prim = [tr.split("/")[0] for tr in self.translits]
-        return sep.join(prim[i] for i in indices)
+        return sep.join(prim[self._check(i)] for i in indices)
 
 
 # --------------------------------------------------------------------------
@@ -243,7 +248,8 @@ class RuneText:
             tuple(
                 (i - start, s)
                 for i, s in self.other
-                if 0 <= i - start < len(sliced) or (start == 0 and i == -1)
+                if 0 <= i - start < len(sliced)
+                or (start == 0 and len(sliced) and i == -1)
             )
             if contiguous
             else ()
@@ -254,7 +260,12 @@ class RuneText:
             positions=self.positions[key],
             marks_after=self.marks_after[key] if contiguous else ("",) * len(sliced),
             other=other,
-            leading_marks=self.leading_marks if start == 0 and contiguous else "",
+            # `start == 0` alone is true of t[:0], which then carried the
+            # leading content into a slice holding no runes at all -- and
+            # concat([t[:0], t]) doubled it.
+            leading_marks=(
+                self.leading_marks if start == 0 and len(sliced) and contiguous else ""
+            ),
         )
 
     def _split_at(self, ends_run) -> list[RuneText]:

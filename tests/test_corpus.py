@@ -126,6 +126,25 @@ class TestOther(unittest.TestCase):
         # A contiguous slice is untouched.
         self.assertEqual(t[:8].marks_after, t.marks_after[:8])
 
+    def test_empty_prefix_slice_carries_nothing(self):
+        # Both guards tested `start == 0`, which is true of t[:0], so an empty
+        # slice kept 215 chars of `other` and the leading marks -- and
+        # concat([t[:0], t]) then doubled them.
+        t = c.page("page-51").text()
+        self.assertTrue(t.leading_marks and t.other)
+        empty = t[:0]
+        self.assertEqual(len(empty), 0)
+        self.assertEqual(empty.other, ())
+        self.assertEqual(empty.leading_marks, "")
+        joined = corpus.RuneText.concat([empty, t[0:]])
+        self.assertEqual(joined.other, t.other)
+        self.assertEqual(joined.leading_marks, t.leading_marks)
+        # A genuinely runeless page is built by the parser, not by slicing,
+        # and must still carry its block.
+        p50 = c.page("page-50").text()
+        self.assertEqual(len(p50), 0)
+        self.assertEqual(len(p50.other), 1)
+
     def test_slicing_other(self):
         t = c.page("page-15").text()
         self.assertEqual(len(t[:9].other), 1)  # tail keeps its square

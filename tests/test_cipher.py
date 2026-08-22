@@ -141,6 +141,29 @@ class TestPrimitives(unittest.TestCase):
         skips = {i for i, x in enumerate(pt) if x == 0}
         self.assertEqual(cipher.autokey_ct_decrypt(ct, key, skips), pt)
 
+    def test_primes_are_cached_not_regenerated(self):
+        # phi_prime_decrypt started a fresh trial-division pass every call:
+        # 0.134s over the 12,956-rune stream, ~22 minutes for a 10k-candidate
+        # sweep over skip-set hypotheses. 0.13's keystream is fixed.
+        import itertools
+
+        def naive():
+            n = 2
+            while True:
+                if all(n % p for p in range(2, int(n**0.5) + 1)):
+                    yield n
+                n += 1
+
+        self.assertEqual(
+            list(itertools.islice(cipher.primes(), 3000)),
+            list(itertools.islice(naive(), 3000)),
+        )
+        # Two independent iterators must not interfere through the cache.
+        a, b = cipher.primes(), cipher.primes()
+        self.assertEqual([next(a) for _ in range(5)], [next(b) for _ in range(5)])
+        self.assertEqual(list(itertools.islice(cipher.phi_primes(), 5)),
+                         [1, 2, 4, 6, 10])
+
     def test_short_running_key_raises_clearly(self):
         # A key text shorter than the ciphertext used to escape as a bare
         # StopIteration, which reads as an empty iterator to the caller.

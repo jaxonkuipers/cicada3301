@@ -58,10 +58,15 @@ _RUNE = f"[{corpus.RUNIC_FIRST}-{corpus.RUNIC_LAST}]"
 RUNE_RUN = re.compile(_RUNE + "+")
 # Rune text is normally printed with separators -- `-` between words, `.`
 # between clauses, `/` at a line end -- so a contiguous-run index misses any
-# query that spans one. Both forms are indexed. Spaces and tabs join; a
-# newline does not, or every row of a pasted rune grid would fuse into one
-# sequence that never existed.
-RUNE_JOINED = re.compile(f"{_RUNE}+(?:[-./| \\t]+{_RUNE}+)+")
+# query that spans one. Both forms are indexed.
+#
+# What does NOT join: a newline, or every row of a pasted rune grid would fuse
+# into one sequence that never existed; and a `|`, which is that same grid's
+# COLUMN separator, so `| ᚠᚢᚦ | ᚩᚱᚳ | ᚷᚹᚻ |` was reading three cells as nine
+# adjacent runes. `_TRANSLIT_SEP` below always omitted `|`; the two extractors
+# disagreed about the same character. Spaces and tabs still join -- a tab is
+# whitespace between tokens exactly as a space is, and a space already joins.
+RUNE_JOINED = re.compile(f"{_RUNE}+(?:[-./ \\t]+{_RUNE}+)+")
 _WORDS = re.compile(r"[A-Za-z]+")
 _TRANSLIT_SEP = frozenset("-. /")
 _DIGIT_SPLIT = re.compile(r"[0-9]+|[^0-9]+")
@@ -72,6 +77,11 @@ _NUMERIC_SEP = re.compile(r"[\s,;:\[\]()\-|/]+")
 # +/-1 matrix indexes as rune text that was never written.
 _SIGNED = re.compile(r"(?<![0-9])-[0-9]")
 _ROW_BREAK = frozenset("\n\r")
+# A `|` is a column separator, and a closing bracket followed by an opening one
+# is the boundary between two containers. Either means the digits on each side
+# were printed as separate sequences: `[12, 18, 25] | [6, 7, 16]` is two
+# vectors, and the shipped index had 19 rows fusing exactly that way.
+_GROUP_BREAK = re.compile(r"\||[\])][^\[(]*[\[(]")
 
 # Below these lengths the notation is guesswork rather than rune text.
 MIN_RUNIC = 2
@@ -149,6 +159,9 @@ def _numeric_sep(tok: str) -> bool:
     same rule `RUNE_JOINED` follows above -- `\\s` in `_NUMERIC_SEP` would
     otherwise fuse a 6x6 grid into one 36-rune sequence that never existed.
 
+    A `|` or a `] [` ends it: see `_GROUP_BREAK`. Those are the same
+    fabrication as the newline -- two things printed apart, indexed as one.
+
     A `-` ends it too, unless the token is exactly `-`. Being the whole
     non-digit token between two digit tokens, a lone `-` is `19-21-23`, index
     notation; a `-` with anything else around it (` -`, `,-`, `--`, ` - `) is
@@ -158,6 +171,7 @@ def _numeric_sep(tok: str) -> bool:
     return (
         _NUMERIC_SEP.fullmatch(tok) is not None
         and not (_ROW_BREAK & set(tok))
+        and not _GROUP_BREAK.search(tok)
         and ("-" not in tok or tok == "-")
     )
 
@@ -241,7 +255,9 @@ def _translit(text: str) -> Iterator[Run]:
             continue
         if not adjacent:
             yield from take()
-        elif stretch:
+        else:
+            # `adjacent` already required a non-empty stretch, so the guard
+            # this used to carry (`elif stretch:`) could never be false.
             seps.append(sep)
         stretch.append(m)
     yield from take()

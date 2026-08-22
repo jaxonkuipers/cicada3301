@@ -277,6 +277,16 @@ class TestSearch(unittest.TestCase):
             self.assertEqual(empty["hits"], 0)
             self.assertEqual(empty["conversations"], [])
 
+    def test_impossible_dates_are_refused(self):
+        # ^\d{4}(-\d{2}(-\d{2})?)?$ matched '2021-99-99', and ts comparison
+        # is on strings, so it quietly meant "from 2022 onward" and returned a
+        # confident result set for a filter nobody asked for.
+        with archive():
+            for bad in ("2021-99-99", "2021-13-01", "2021-02-30", "2021-00-05"):
+                self.assertEqual(run(["first", "--since", bad])[0], 2, bad)
+            for good in ("2021", "2021-03", "2021-03-14"):
+                self.assertEqual(run(["first", "--since", good])[0], 0, good)
+
     def test_query_and_runes_are_mutually_exclusive(self):
         # Running one and silently discarding the other answers a question
         # nobody asked; the rune path used to win without saying so.
@@ -468,6 +478,15 @@ class TestExplog(unittest.TestCase):
             )
             self.assertEqual(code, 2)
             self.assertEqual(len(path.read_text().splitlines()), 2)  # nothing appended
+
+    def test_list_validates_section_like_add_does(self):
+        # `list --section 0.05` printed "no entries" and exited 0, which
+        # AGENTS.md step 4 tells the next agent to read as "unclaimed, take
+        # it". Same typo, opposite direction, worse consequence.
+        with self.log():
+            self.assertEqual(self.call(["list", "--section", "0.05"])[0], 2)
+            self.assertEqual(self.call(["list", "--section", "0.5"])[0], 0)
+            self.assertEqual(self.call(["list", "--section", "all"])[0], 0)
 
     def test_empty_log_lists_cleanly(self):
         with self.log():

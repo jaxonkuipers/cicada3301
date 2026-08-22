@@ -269,13 +269,17 @@ def main() -> int:
     # unlinking first and failing mid-build used to leave a valid but empty
     # discord.db behind -- an index that answers every query with nothing.
     tmp = DISCORD_DB.with_name(DISCORD_DB.name + ".building")
-    for path in (tmp, *(tmp.with_name(tmp.name + s) for s in ("-wal", "-shm"))):
+    scratch = (tmp, *(tmp.with_name(tmp.name + s) for s in ("-wal", "-shm")))
+    for path in scratch:
         path.unlink(missing_ok=True)
     try:
         with closing(sqlite3.connect(tmp)) as db:
             messages, rune_runs, per_channel, per_notation = build(db)
     except BaseException:
-        tmp.unlink(missing_ok=True)
+        # All three: the sidecars outlive a failure too, and a stale -wal
+        # beside a fresh build is worse than no scratch file at all.
+        for path in scratch:
+            path.unlink(missing_ok=True)
         raise
     # Only the sidecars: replace() is atomic and overwrites, so unlinking the
     # index first bought nothing and reopened the very window the temp build

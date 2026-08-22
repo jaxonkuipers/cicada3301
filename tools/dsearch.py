@@ -12,6 +12,7 @@ import re
 import sqlite3
 import sys
 from contextlib import closing
+from datetime import datetime
 from typing import NamedTuple
 
 from lib import runes
@@ -47,6 +48,10 @@ result), 2 = bad query or missing index.
 HIGHEST_CHAR = "￿"
 
 DATE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
+# The shape is not the date: '2021-99-99' matched, and ts comparison is on
+# strings, so it silently meant "from 2022 onward" and returned a confident,
+# plausibly-sized result set for a filter nobody asked for.
+_DATE_FORMATS = {4: "%Y", 7: "%Y-%m", 10: "%Y-%m-%d"}
 
 
 class Searched(NamedTuple):
@@ -101,7 +106,12 @@ def fts_match(
             f"searched {safe!r} instead (every term required, no operators)",
             file=sys.stderr,
         )
-        return db.execute(sql, (*[safe] * matches, *params)).fetchall(), safe
+        try:
+            return db.execute(sql, (*[safe] * matches, *params)).fetchall(), safe
+        except sqlite3.OperationalError as e2:
+            # \w+ cannot produce invalid FTS5, so this should be unreachable;
+            # exit 2 rather than a traceback if it ever is.
+            raise die(f"search failed after quoting terms: {e2}") from None
 
 
 def filters(args: argparse.Namespace) -> tuple[str, list]:
@@ -115,8 +125,17 @@ def filters(args: argparse.Namespace) -> tuple[str, list]:
         params.append(f"%{escaped}%")
     for name in ("since", "until"):
         val = getattr(args, name)
-        if val and not DATE.match(val):
-            raise die(f"--{name} must be YYYY, YYYY-MM or YYYY-MM-DD, got {val!r}")
+        if not val:
+            continue
+        try:
+            if not DATE.match(val):
+                raise ValueError(val)
+            datetime.strptime(val, _DATE_FORMATS[len(val)])
+        except (ValueError, KeyError):
+            raise die(
+                f"--{name} must be a real YYYY, YYYY-MM or YYYY-MM-DD date, "
+                f"got {val!r}"
+            ) from None
     if args.since:
         where.append("m.ts >= ?")
         params.append(args.since)
@@ -245,9 +264,12 @@ def windows(db: sqlite3.Connection, hits: list[Hit], w: int):
 
     blocks = []
     for channel, seqs in want.items():
-        # One BETWEEN per contiguous run rather than one parameter per seq:
-        # the IN list grew with --limit x --window and had no bound, which on
-        # SQLite before 3.32 (999 parameters) raises "too many SQL variables".
+        # One BETWEEN per contiguous run rather than one parameter per seq.
+        # This reduces the parameter count, it does not cap it: scattered hits
+        # still bind 2 per run, so --limit 500 --window 0 over 500 separate
+        # seqs binds ~1001. Bounded well under SQLite's 32,766 (999 before
+        # 3.32) for any --limit a person types, which is what --limit's own
+        # validation leaves it at.
         ranges = []
         for seq in sorted(seqs):
             if ranges and seq == ranges[-1][1] + 1:

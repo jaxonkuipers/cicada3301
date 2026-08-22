@@ -61,6 +61,22 @@ class TestExtraction(unittest.TestCase):
         got = runs(grid, "numeric")
         self.assertEqual([len(r.canon) for r in got], [6, 6, 6])
 
+    def test_pipe_and_bracket_boundaries_break_a_run(self):
+        # `|` is a grid's COLUMN separator and `] [` is the boundary between
+        # two containers -- the same fabrication as a newline. The shipped
+        # index had 19 numeric rows fusing two vectors across `] | [`.
+        self.assertEqual(runs("| ᚠᚢᚦ | ᚩᚱᚳ | ᚷᚹᚻ |", "runic-joined"), [])
+        for text in ("[12, 18, 25, 9] | [6, 7, 16, 0]", "[12, 18, 25, 9] [6, 7, 16, 0]"):
+            got = [len(r.canon) for r in runs(text, "numeric")]
+            self.assertEqual(got, [4, 4], text)
+
+    def test_ordinary_separators_still_join(self):
+        # The fix must not cost recall on real notation.
+        self.assertEqual([len(r.canon) for r in runs("ᚠᚢᚦ-ᚩᚱᚳ", "runic-joined")], [6])
+        self.assertEqual([len(r.canon) for r in runs("ᚠᚢᚦ\tᚩᚱᚳ", "runic-joined")], [6])
+        self.assertEqual([len(r.canon) for r in runs("19-21-23-27", "numeric")], [4])
+        self.assertEqual([len(r.canon) for r in runs("[19, 21, 23, 27]", "numeric")], [4])
+
     def test_numeric_raw_as_written(self):
         (r,) = runs("indices [19, 21, 23, 27] here", "numeric")
         self.assertEqual(r.raw, "19, 21, 23, 27")
@@ -117,6 +133,19 @@ class TestGematria(unittest.TestCase):
         gp = corpus.load().gp
         with self.assertRaises(ValueError):
             gp.spell("ᚠᚢᚦ")
+
+    def test_unspell_and_prime_reject_out_of_range(self):
+        # Python's negative indexing made unspell([-1]) return 'EA' and
+        # prime(-1) return 109. unspell is what candidate plaintext is READ
+        # with, so an off-by-one surfaced as plausible Latin.
+        gp = corpus.load().gp
+        for bad in (-1, 29, 100):
+            with self.assertRaises(ValueError, msg=bad):
+                gp.unspell([bad])
+            with self.assertRaises(ValueError, msg=bad):
+                gp.prime(bad)
+        self.assertEqual(gp.unspell([0, 1, 2]), "FUTH")
+        self.assertEqual(gp.prime(0), 2)
 
     def test_to_runes_rejects_out_of_range(self):
         gp = corpus.load().gp

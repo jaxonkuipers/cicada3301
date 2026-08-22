@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--notes", default="", help="scores, observations, links")
 
     ls = sub.add_parser("list", help="list entries")
-    ls.add_argument("--section", help="filter; not validated, unlike add")
+    ls.add_argument("--section", help="a section id from sections.csv, or 'all'")
     ls.add_argument("--verdict", choices=VERDICTS)
     ls.add_argument("--json", action="store_true")
 
@@ -209,6 +209,19 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "add":
         return add(args)
+    # Same validation as `add`, for the same reason pointing the other way:
+    # `list --section 0.05` printed "no entries" and exited 0, and AGENTS.md
+    # step 4 tells the next agent to read that as "nobody has claimed this,
+    # take it". A typo must not manufacture an unclaimed target.
+    if getattr(args, "section", None):
+        valid = known_sections()
+        if args.section not in valid:
+            print(
+                f"unknown section {args.section!r}; expected one of "
+                f"{', '.join(valid)}",
+                file=sys.stderr,
+            )
+            return 2
     entries = read_log()
     if args.cmd == "list":
         entries = [e for e in entries if matches(e, args)]

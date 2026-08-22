@@ -100,13 +100,42 @@ def repeat(key: Iterable[int]) -> Iterator[int]:
         yield from k
 
 
+_PRIMES: list[int] = []
+
+
 def primes() -> Iterator[int]:
-    """2, 3, 5, 7, ... (naive; fast enough for corpus-length streams)."""
-    n = 2
+    """2, 3, 5, 7, ... endlessly.
+
+    Backed by a module-level list, extended on demand and never recomputed.
+    Trial division from scratch cost 0.134s per pass over the 12,956-rune
+    stream, and phi_prime_decrypt starts a fresh pass every call -- a sweep
+    over 10k skip-set hypotheses spent ~22 minutes regenerating the same
+    13,000 primes. 0.13's keystream is fixed, so there is nothing to vary.
+    """
+    i = 0
     while True:
-        if all(n % p for p in range(2, int(n**0.5) + 1)):
-            yield n
-        n += 1
+        while i >= len(_PRIMES):
+            n = _PRIMES[-1] + 1 if _PRIMES else 2
+            while not _is_prime(n):
+                n += 1
+            _PRIMES.append(n)
+        yield _PRIMES[i]
+        i += 1
+
+
+def _is_prime(n: int) -> bool:
+    """Trial division by the primes found so far, stopping at sqrt(n).
+
+    `all(n % p for p in _PRIMES if p * p <= n)` reads the same but walks the
+    whole list to apply the filter, which turned generating 13k primes into
+    O(k^2) -- measured 1.7s where breaking out costs 0.09s.
+    """
+    for p in _PRIMES:
+        if p * p > n:
+            return True
+        if n % p == 0:
+            return False
+    return True
 
 
 def phi_primes() -> Iterator[int]:

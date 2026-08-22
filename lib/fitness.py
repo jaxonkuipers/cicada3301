@@ -65,6 +65,7 @@ from collections.abc import Sequence
 
 from lib import corpus
 from lib.paths import CORPUS, REFERENCE
+from lib.stats import as_indices
 
 # The alphabet size, as lib.cipher and lib.stats each carry it. Pinned to
 # gp.N by tests/test_corpus.py so the three cannot drift apart:
@@ -115,6 +116,7 @@ def _model(n: int) -> tuple[dict[tuple, float], float]:
 
 def score(text: Sequence[int], n: int = N_DEFAULT) -> float:
     """Mean log10 n-gram probability per position. Higher = more English."""
+    text = as_indices(text)
     if n < 1:
         # _model(0) counts one empty gram at probability 1.0, so every
         # candidate scores exactly 0.0 -- and real scores are negative, so a
@@ -139,6 +141,7 @@ def windowed(
     stretch lifts its windows enormously while barely moving the whole-stream
     mean: rank candidates by max window as well as by the whole.
     """
+    text = as_indices(text)
     if step < 1 or size < n:
         raise ValueError(f"need step >= 1 and size >= {n}, got step={step} size={size}")
     if len(text) <= size:

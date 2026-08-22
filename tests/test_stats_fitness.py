@@ -90,6 +90,26 @@ class TestFitness(unittest.TestCase):
         with self.assertRaises(ValueError):
             stats.chi_squared([1, 2], [0.5, 0.5])  # short reference
 
+    def test_impossible_runes_are_not_discarded(self):
+        # Skipping the zero-probability term threw away the most damning
+        # evidence: a candidate matching the reference exactly except for 5
+        # runes it calls impossible scored 0.50, all of it from the 5
+        # occurrences missing elsewhere.
+        ref = [1 / 28] * 28 + [0.0]
+        self.assertEqual(stats.chi_squared(list(range(28)) * 10, ref), 0.0)
+        self.assertEqual(stats.chi_squared(list(range(28)) * 10 + [28] * 5, ref),
+                         float("inf"))
+
+    def test_runetext_and_list_agree_and_cost_the_same(self):
+        # AGENTS.md shows fitness.score(t) with t a RuneText; slicing one
+        # rebuilt a RuneText per window, 24x slower for an identical answer.
+        rt = c.unsolved
+        idx = list(rt.indices)
+        self.assertEqual(fitness.score(rt), fitness.score(idx))
+        self.assertEqual(fitness.windowed(rt), fitness.windowed(idx))
+        for fn in (stats.ioc, stats.doublet_rate, stats.entropy, stats.counts):
+            self.assertEqual(fn(rt), fn(idx), fn.__name__)
+
     def test_alphabet_size_is_shared(self):
         self.assertEqual(fitness.N, stats.N)
         self.assertEqual(len(fitness.english_frequencies()), stats.N)
