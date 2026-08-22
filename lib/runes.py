@@ -83,6 +83,12 @@ _ROW_BREAK = frozenset("\n\r")
 # vectors, and the shipped index had 19 rows fusing exactly that way.
 _GROUP_BREAK = re.compile(r"\||[\])][^\[(]*[\[(]")
 
+# The shortest sequence worth indexing or querying. The indexer and the query
+# path MUST agree: index at 3 and answer queries at 4 and every 3-rune
+# citation is silently unfindable. Both read it from here, the way N = 29 is
+# read from one place.
+MIN_INDEXED = 3
+
 # Below these lengths the notation is guesswork rather than rune text.
 MIN_RUNIC = 2
 MIN_JOINED = 3

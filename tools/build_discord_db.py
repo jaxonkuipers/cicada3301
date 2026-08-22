@@ -37,8 +37,9 @@ BRACE_BLOCK = re.compile(r"^\{(Embed|Attachments|Reactions|Stickers)\}$")
 TIMESTAMP = "%m/%d/%Y %I:%M %p"
 PINNED = " (pinned)"
 
-# Shorter than this and a "sequence" is a coincidence, not a citation.
-MIN_CANON = 3
+# Shorter than this and a "sequence" is a coincidence, not a citation. Shared
+# with the query path -- see runes.MIN_INDEXED.
+MIN_CANON = runes.MIN_INDEXED
 # Long enough to recognise a hit by, short enough not to store an essay twice.
 MAX_RAW = 400
 
@@ -119,11 +120,16 @@ def channel_name_of(lines: list[str], default: str) -> str:
     return default
 
 
-def parse_file(path: Path) -> Iterator[Message]:
+def parse_file(path: Path, data: bytes | None = None) -> Iterator[Message]:
     channel = path.stem
     # strict: the exports are clean UTF-8; corruption should fail the build,
     # not silently replace bytes.
-    lines = path.read_text(encoding="utf-8").split("\n")
+    raw = path.read_bytes() if data is None else data
+    # read_text() translates newlines and decode() does not, so do it here:
+    # a CRLF export otherwise leaves a trailing \r on every body line, which
+    # the existing CRLF case caught. \r alone counts too, as universal
+    # newlines does.
+    lines = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").split("\n")
     channel_name = channel_name_of(lines, default=channel)
 
     cur: Message | None = None
@@ -205,12 +211,20 @@ def index_context(db: sqlite3.Connection) -> None:
 def build(db: sqlite3.Connection) -> tuple[int, int, Counter, Counter]:
     db.executescript(SCHEMA)
     msg_id = rune_id = 0
+    provenance: list[tuple[str, int, str]] = []
     per_channel: Counter[str] = Counter()
     per_notation: Counter[str] = Counter()
 
     for path in sorted(DISCORD.glob("*.txt")):
         per_channel[path.stem] = 0  # keep an empty export visible in the report
-        for msg in parse_file(path):
+        # One read per file: parse and fingerprint from the same bytes, rather
+        # than read_text here and read_bytes again for provenance -- 73 MB
+        # twice. Same bytes both ways also means provenance cannot record a
+        # digest of something other than what was indexed.
+        data = path.read_bytes()
+        provenance.append((str(path.relative_to(ROOT)), len(data),
+                           hashlib.sha256(data).hexdigest()))
+        for msg in parse_file(path, data):
             body = "\n".join(msg.body).strip()
             msg_id += 1
             per_channel[path.stem] += 1
@@ -244,13 +258,9 @@ def build(db: sqlite3.Connection) -> tuple[int, int, Counter, Counter]:
                     (rune_id, run.canon),
                 )
 
-    for path in sorted(DISCORD.glob("*.txt")):
-        data = path.read_bytes()
-        db.execute(
-            "INSERT INTO provenance(file, bytes, sha256) VALUES (?,?,?)",
-            (str(path.relative_to(ROOT)), len(data),
-             hashlib.sha256(data).hexdigest()),
-        )
+    db.executemany(
+        "INSERT INTO provenance(file, bytes, sha256) VALUES (?,?,?)", provenance
+    )
 
     index_context(db)
     db.commit()

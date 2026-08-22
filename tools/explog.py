@@ -124,7 +124,7 @@ def add(args: argparse.Namespace) -> int:
             params = json.loads(params)
         except json.JSONDecodeError:
             pass  # keep as the free-text string it was
-    LOG.parent.mkdir(exist_ok=True)
+    LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(LOG, "a", encoding="utf-8") as f, _locked(f):
         bad: list[int] = []
         entries = read_log(bad)

@@ -164,6 +164,73 @@ class TestPrimitives(unittest.TestCase):
         self.assertEqual(list(itertools.islice(cipher.phi_primes(), 5)),
                          [1, 2, 4, 6, 10])
 
+    def test_prime_cache_survives_concurrent_extension(self):
+        # Two threads inside the extension block both read _PRIMES[-1], both
+        # scan to the same prime, and both append it: the list goes
+        # non-monotonic and every later index shifts. Module-global and never
+        # revalidated, so a poisoned cache outlives the threads. Forced here
+        # by pausing between the read and the append; _is_prime is untouched.
+        import threading
+        import time
+
+        real = cipher._is_prime
+        paused = threading.Event()
+
+        def slow(n):
+            r = real(n)
+            if r and len(cipher._PRIMES) == 10 and not paused.is_set():
+                paused.set()
+                time.sleep(0.2)
+            return r
+
+        saved = list(cipher._PRIMES)
+        try:
+            cipher._PRIMES.clear()
+            cipher._is_prime = slow
+            def churn():
+                it = cipher.primes()
+                for _ in range(20):
+                    next(it)
+
+            threads = [threading.Thread(target=churn) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            got = list(cipher._PRIMES)
+        finally:
+            cipher._is_prime = real
+            cipher._PRIMES[:] = saved
+        self.assertTrue(paused.is_set(), "the interleaving was never forced")
+        self.assertEqual(got, sorted(set(got)), "cache went non-monotonic")
+        self.assertEqual(got[:10], [2, 3, 5, 7, 11, 13, 17, 19, 23, 29])
+
+    def test_monoalphabetic_primitives_take_skips(self):
+        # An interrupted shift had no supported path, and CLAUDE.md forbids
+        # writing the arithmetic inline. Default is unchanged behaviour --
+        # 0.0 and 0.2 have no interrupter, per sections.csv.
+        ct = [5, 0, 9, 3]
+        self.assertEqual(cipher.shift_decrypt(ct, 2, skips={1}),
+                         [3, 0, 7, 1])
+        self.assertEqual(cipher.atbash(ct, skips={1}), [23, 0, 19, 25])
+        self.assertEqual(cipher.affine_decrypt(ct, 7, 11, skips={1}),
+                         [cipher.affine_decrypt([5], 7, 11)[0], 0,
+                          cipher.affine_decrypt([9], 7, 11)[0],
+                          cipher.affine_decrypt([3], 7, 11)[0]])
+        for fn, args in ((cipher.shift_decrypt, (2,)), (cipher.atbash, ()),
+                         (cipher.affine_decrypt, (7, 11))):
+            self.assertEqual(fn(ct, *args), fn(ct, *args, skips=frozenset()))
+
+    def test_out_of_range_skips_are_refused(self):
+        # Skip sets are search state; silently ignoring a stray position makes
+        # an attack report coverage it did not have.
+        with self.assertRaises(ValueError):
+            cipher.vigenere_decrypt([1, 2, 3], [1], skips={99})
+        with self.assertRaises(ValueError):
+            cipher.vigenere_decrypt([1, 2, 3], [1], skips={-1})
+        self.assertEqual(cipher.vigenere_decrypt([1, 2, 3], [1], skips={2}),
+                         [0, 1, 3])
+
     def test_short_running_key_raises_clearly(self):
         # A key text shorter than the ciphertext used to escape as a bare
         # StopIteration, which reads as an empty iterator to the caller.

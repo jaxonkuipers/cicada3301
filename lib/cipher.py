@@ -47,6 +47,7 @@ Two more measured facts worth stealing for attacks:
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterable, Iterator
 
 N = 29
@@ -77,6 +78,15 @@ def apply_stream(
     interrupter behaviour. The stream may be any iterator (a repeated keyword,
     phi of the primes, another text).
     """
+    text = list(text)
+    stray = {i for i in skips if not 0 <= i < len(text)}
+    if stray:
+        # Skip sets are search state; a position outside the text is a bug in
+        # whatever generated it, and silently ignoring it makes an attack
+        # report coverage it did not have.
+        raise ValueError(
+            f"skips outside 0..{len(text) - 1}: {sorted(stray)[:5]}"
+        )
     out = []
     for i, x in enumerate(text):
         if i in skips:
@@ -101,6 +111,15 @@ def repeat(key: Iterable[int]) -> Iterator[int]:
 
 
 _PRIMES: list[int] = []
+# Guards the extension block only. Two threads reaching it together both read
+# _PRIMES[-1], both scan to the same next prime, and both append it: the list
+# goes non-monotonic and every later index shifts. It is module-global and
+# never revalidated, so a poisoned cache stays poisoned for the life of the
+# process -- including for a later single-threaded phi_prime_decrypt -- and
+# the output is a plausible rune stream that scores as noise and gets logged
+# as disproved. A sweep is the first thing anyone reaches for a
+# ThreadPoolExecutor on, and this cache is what makes sweeps affordable.
+_PRIMES_LOCK = threading.Lock()
 
 
 def primes() -> Iterator[int]:
@@ -114,11 +133,17 @@ def primes() -> Iterator[int]:
     """
     i = 0
     while True:
+        # Read the common case without the lock -- list indexing is atomic
+        # under the GIL and _PRIMES only ever grows -- and take it only to
+        # extend, re-checking the length once inside.
         while i >= len(_PRIMES):
-            n = _PRIMES[-1] + 1 if _PRIMES else 2
-            while not _is_prime(n):
-                n += 1
-            _PRIMES.append(n)
+            with _PRIMES_LOCK:
+                if i < len(_PRIMES):
+                    break
+                n = _PRIMES[-1] + 1 if _PRIMES else 2
+                while not _is_prime(n):
+                    n += 1
+                _PRIMES.append(n)
         yield _PRIMES[i]
         i += 1
 
@@ -148,21 +173,30 @@ def phi_primes() -> Iterator[int]:
 # --------------------------------------------------------------------------
 
 
-def shift_decrypt(ct: Iterable[int], k: int) -> list[int]:
-    return [(x - k) % N for x in ct]
+# These take `skips` for the same reason the keyed primitives do: an
+# interrupted stretch is part of what an attack searches, and CLAUDE.md
+# forbids writing the arithmetic inline, so an interrupted shift had no
+# supported path. There is no keystream to hold here -- a skipped position
+# simply passes through -- but the parameter means the same thing everywhere.
+# The solved sections that use these (0.0, 0.2) have no interrupter, so the
+# default is the behaviour every known-answer test already proves.
 
 
-def atbash(text: Iterable[int]) -> list[int]:
+def shift_decrypt(ct: Iterable[int], k: int, skips=frozenset()) -> list[int]:
+    return [x if i in skips else (x - k) % N for i, x in enumerate(ct)]
+
+
+def atbash(text: Iterable[int], skips=frozenset()) -> list[int]:
     """Alphabet inversion i -> 28-i. Self-inverse; section 0.0's cipher."""
-    return [(N - 1 - x) % N for x in text]
+    return [x if i in skips else (N - 1 - x) % N for i, x in enumerate(text)]
 
 
-def affine_decrypt(ct: Iterable[int], a: int, b: int) -> list[int]:
+def affine_decrypt(ct: Iterable[int], a: int, b: int, skips=frozenset()) -> list[int]:
     """Invert c = a*p + b. 29 is prime, so any a in 1..28 works."""
     if a % N == 0:
         raise ValueError(f"affine multiplier a={a} is 0 mod {N}; use 1..{N - 1}")
     inv = pow(a, -1, N)
-    return [((x - b) * inv) % N for x in ct]
+    return [x if i in skips else ((x - b) * inv) % N for i, x in enumerate(ct)]
 
 
 # --------------------------------------------------------------------------

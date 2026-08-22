@@ -11,6 +11,7 @@ own export in a temporary directory.
 """
 
 import contextlib
+import hashlib
 import io
 import json
 import sqlite3
@@ -20,6 +21,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from lib import runes
 from tools import build_discord_db as bdb
 from tools import dsearch, explog
 
@@ -276,6 +278,47 @@ class TestSearch(unittest.TestCase):
             self.assertEqual(empty.keys(), full.keys())
             self.assertEqual(empty["hits"], 0)
             self.assertEqual(empty["conversations"], [])
+
+    def test_wide_scattered_windows_do_not_blow_the_expression_depth(self):
+        # The binding SQLite limit in windows() is the expression-tree depth
+        # of 1000, not the parameter cap -- an OR chain hits it ~33x sooner,
+        # and it surfaced as a traceback and exit 1 against a stated contract
+        # of "0 = ran fine, 2 = bad query".
+        many = "Guild: g\nChannel: c\n\n" + "".join(
+            f"[3/14/2021 9:05 AM] u{i}\nmsg{i} needle\n\n" for i in range(3000)
+        )
+        with archive(text=many, name="big.txt"):
+            code, out = run(["needle", "--limit", "2500", "--window", "0"])
+            self.assertEqual(code, 0)
+            self.assertEqual(out.count("needle"), 2500)
+
+    def test_index_and_query_share_one_minimum_length(self):
+        # Index at 3 and answer queries at 4 and every 3-rune citation is
+        # silently unfindable; the two thresholds must come from one place.
+        self.assertEqual(bdb.MIN_CANON, runes.MIN_INDEXED)
+        with archive():
+            self.assertEqual(run(["--runes", "F-U"])[0], 2)          # below it
+            self.assertEqual(run(["--runes", "F-U-TH"])[0], 0)       # at it
+
+    def test_unreadable_export_exits_two(self):
+        with archive() as root:
+            (root / "discord" / "54-55.txt").chmod(0o000)
+            try:
+                self.assertEqual(run(["first"])[0], 2)
+            finally:
+                (root / "discord" / "54-55.txt").chmod(0o644)
+
+    def test_provenance_digests_what_was_indexed(self):
+        # parse and hash now come from one read; they must not disagree.
+        with archive() as root:
+            db = sqlite3.connect(root / "discord.db")
+            file, size, sha = db.execute(
+                "SELECT file, bytes, sha256 FROM provenance"
+            ).fetchone()
+            db.close()
+            data = (root / "discord" / "54-55.txt").read_bytes()
+            self.assertEqual(size, len(data))
+            self.assertEqual(sha, hashlib.sha256(data).hexdigest())
 
     def test_impossible_dates_are_refused(self):
         # ^\d{4}(-\d{2}(-\d{2})?)?$ matched '2021-99-99', and ts comparison

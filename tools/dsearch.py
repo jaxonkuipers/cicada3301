@@ -47,6 +47,10 @@ result), 2 = bad query or missing index.
 # covers all of 2021 rather than stopping at midnight on the 1st of January.
 HIGHEST_CHAR = "￿"
 
+# OR terms per query in windows(): comfortably under SQLite's expression-tree
+# depth limit of 1000, which is what actually binds there.
+RANGE_BATCH = 400
+
 DATE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 # The shape is not the date: '2021-99-99' matched, and ts comparison is on
 # strings, so it silently meant "from 2022 onward" and returned a confident,
@@ -160,13 +164,24 @@ def check_stale(db: sqlite3.Connection) -> None:
     # count would otherwise read as fresh with the hash sitting right there in
     # the row. Hashing all of discord/ costs ~12ms, well under a search.
     indexed = {r["file"]: (r["bytes"], r["sha256"]) for r in rows}
-    current = {
-        str(p.relative_to(ROOT)): (
-            p.stat().st_size,
-            hashlib.sha256(p.read_bytes()).hexdigest(),
-        )
-        for p in DISCORD.glob("*.txt")
-    }
+    try:
+        sizes = {str(p.relative_to(ROOT)): p.stat().st_size
+                 for p in DISCORD.glob("*.txt")}
+        # Size first: it settles the common case for free. Only hash when the
+        # sizes all match, which is when an equal-size edit could be hiding --
+        # hashing 73 MB was ~9ms of a ~100ms search, paid on every invocation.
+        if sizes == {f: b for f, (b, _) in indexed.items()}:
+            current = {
+                str(p.relative_to(ROOT)): (
+                    p.stat().st_size,
+                    hashlib.sha256(p.read_bytes()).hexdigest(),
+                )
+                for p in DISCORD.glob("*.txt")
+            }
+        else:
+            current = sizes  # already different; no need to read anything
+    except OSError as e:
+        raise die(f"cannot read the exports under {DISCORD}: {e}") from None
     if indexed != current:
         print(
             "warning: discord/ exports changed since discord.db was built; "
@@ -218,8 +233,11 @@ def search_runes(
         canon, notation = runes.canonicalise_query(args.runes)
     except ValueError as e:
         raise die(str(e)) from None
-    if len(canon) < 3:
-        raise die("rune queries need at least 3 runes (trigram index)")
+    if len(canon) < runes.MIN_INDEXED:
+        raise die(
+            f"rune queries need at least {runes.MIN_INDEXED} runes "
+            "(trigram index)"
+        )
     clause, params = filters(args)
     # FTS narrows with trigrams; instr() confirms the exact substring. One hit
     # per message (longest matching run), longest first: length, not relevance,
@@ -264,25 +282,32 @@ def windows(db: sqlite3.Connection, hits: list[Hit], w: int):
 
     blocks = []
     for channel, seqs in want.items():
-        # One BETWEEN per contiguous run rather than one parameter per seq.
-        # This reduces the parameter count, it does not cap it: scattered hits
-        # still bind 2 per run, so --limit 500 --window 0 over 500 separate
-        # seqs binds ~1001. Bounded well under SQLite's 32,766 (999 before
-        # 3.32) for any --limit a person types, which is what --limit's own
-        # validation leaves it at.
+        # One BETWEEN per contiguous run, in batches.
+        #
+        # The binding SQLite limit here is NOT the parameter cap (32,766, or
+        # 999 before 3.32) but the expression-tree depth of 1000, which an OR
+        # chain hits ~33x sooner: at 1000 terms SQLite raises "Expression tree
+        # is too large". Reachable from the CLI -- `--limit 8000 --window 0`
+        # over scattered hits -- and it surfaced as a traceback and exit 1,
+        # against the contract this tool states (0 = ran fine, 2 = bad query).
+        # Batching removes the need to reason about either limit.
         ranges = []
         for seq in sorted(seqs):
             if ranges and seq == ranges[-1][1] + 1:
                 ranges[-1][1] = seq
             else:
                 ranges.append([seq, seq])
-        rows = db.execute(
-            "SELECT id, ts, author, pinned, body, extra, seq, line, channel_name"
-            " FROM messages WHERE channel = ? AND ("
-            + " OR ".join("seq BETWEEN ? AND ?" for _ in ranges)
-            + ") ORDER BY seq",
-            (channel, *(x for r in ranges for x in r)),
-        ).fetchall()
+        rows = []
+        for i in range(0, len(ranges), RANGE_BATCH):
+            batch = ranges[i : i + RANGE_BATCH]
+            rows += db.execute(
+                "SELECT id, ts, author, pinned, body, extra, seq, line, channel_name"
+                " FROM messages WHERE channel = ? AND ("
+                + " OR ".join("seq BETWEEN ? AND ?" for _ in batch)
+                + ") ORDER BY seq",
+                (channel, *(x for r in batch for x in r)),
+            ).fetchall()
+        rows.sort(key=lambda r: r["seq"])
         run = []
         for r in rows:
             if run and r["seq"] != run[-1]["seq"] + 1:
