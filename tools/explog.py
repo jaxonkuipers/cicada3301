@@ -36,6 +36,7 @@ import argparse
 import contextlib
 import datetime as dt
 import json
+import os
 import sys
 
 try:
@@ -56,13 +57,24 @@ def _locked(f):
     Concurrent agents logging at once must neither mint the same id nor
     interleave partial lines. Without fcntl (Windows) the log still works,
     single-writer.
+
+    The write is flushed BEFORE the lock drops. `with open(...) as f,
+    _locked(f):` unwinds this manager first, so releasing here while the entry
+    sat in the userspace buffer let the next process take the lock, read a log
+    that did not contain the entry yet, and mint the same id -- measured, two
+    concurrent adds both got #1. flush() is what closes that window (the other
+    process reads through the same page cache); fsync() is for power loss.
     """
     if fcntl is None:
         yield
+        f.flush()
+        os.fsync(f.fileno())
         return
     fcntl.flock(f, fcntl.LOCK_EX)
     try:
         yield
+        f.flush()
+        os.fsync(f.fileno())
     finally:
         fcntl.flock(f, fcntl.LOCK_UN)
 

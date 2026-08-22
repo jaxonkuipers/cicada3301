@@ -15,6 +15,7 @@ import io
 import json
 import sqlite3
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -233,6 +234,49 @@ class TestSearch(unittest.TestCase):
                 self.assertEqual(run(["first", *bad])[0], 2, bad)
 
 
+    def test_invalid_fts_syntax_falls_back_to_quoted_terms(self):
+        # The one path that deliberately answers a different question than the
+        # one asked: every term becomes required, operators become literals.
+        # It announces itself on stderr; nothing pinned that it still does.
+        with archive():
+            for query in ("auto(key", "first AND", "NEAR/"):
+                out, err = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = dsearch.main([query])
+                self.assertEqual(code, 0, query)
+                self.assertIn("not valid FTS5 syntax", err.getvalue(), query)
+                self.assertIn("every term required", err.getvalue(), query)
+
+    def test_valid_fts_syntax_does_not_fall_back(self):
+        with archive():
+            for query in ("first", "firs*", "first OR second", "first NOT zzz"):
+                err = io.StringIO()
+                with contextlib.redirect_stdout(io.StringIO()), \
+                     contextlib.redirect_stderr(err):
+                    dsearch.main([query])
+                self.assertNotIn("not valid FTS5", err.getvalue(), query)
+
+    def test_query_with_nothing_searchable_exits_two(self):
+        with archive():
+            self.assertEqual(run(['"'])[0], 2)
+
+    def test_main_returns_its_exit_code_without_raising(self):
+        # die() and argparse both signal by raising, which made the -> int
+        # annotation a half-truth and every caller catch two things.
+        with archive(), contextlib.redirect_stdout(io.StringIO()), \
+             contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(dsearch.main(["--limit", "0", "first"]), 2)
+            self.assertEqual(dsearch.main(["first", "--runes", "0 1 2"]), 2)
+            self.assertEqual(dsearch.main(["first"]), 0)
+
+    def test_zero_hit_json_matches_the_populated_shape(self):
+        with archive():
+            empty = json.loads(run(["zzznothing", "--json"])[1])
+            full = json.loads(run(["first", "--json"])[1])
+            self.assertEqual(empty.keys(), full.keys())
+            self.assertEqual(empty["hits"], 0)
+            self.assertEqual(empty["conversations"], [])
+
     def test_query_and_runes_are_mutually_exclusive(self):
         # Running one and silently discarding the other answers a question
         # nobody asked; the rune path used to win without saying so.
@@ -273,6 +317,22 @@ class TestSearch(unittest.TestCase):
             (ch,) = json.loads(out)["channels"]
             self.assertEqual(ch["channel"], "54-55")
             self.assertEqual(ch["messages"], 4)
+
+    def test_replace_is_atomic_so_an_index_is_always_present(self):
+        # replace() overwrites atomically; unlinking the index first bought
+        # nothing and reopened the window the temp build exists to close.
+        with archive() as root:
+            db = root / "discord.db"
+            seen = []
+            real = Path.unlink
+            def watched(self, missing_ok=False):
+                seen.append(self.name)
+                return real(self, missing_ok=missing_ok)
+            with mock.patch.object(Path, "unlink", watched), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                bdb.main()
+            self.assertNotIn("discord.db", seen)  # never unlinked, only replaced
+            self.assertTrue(db.exists())
 
     def test_failed_build_leaves_the_previous_index_intact(self):
         # executescript commits the schema, so unlinking first and failing
@@ -351,6 +411,47 @@ class TestExplog(unittest.TestCase):
         with self.log() as path:
             path.write_text('{"id": 1, "section": "0.5"}\nnot json\n', encoding="utf-8")
             self.assertEqual(len(explog.read_log()), 1)
+
+    def test_concurrent_adds_get_unique_ids(self):
+        # `with open(...) as f, _locked(f):` unwinds _locked FIRST, so
+        # releasing the lock there left the entry in the userspace buffer
+        # until close -- long enough for the next process to read a log
+        # without it and mint the same id. Measured: six concurrent adds all
+        # got #1. The unlock->close gap is widened here to make the window
+        # deterministic; _locked itself is untouched.
+        import fcntl
+        import threading
+
+        if explog.fcntl is None:
+            self.skipTest("no fcntl on this platform")
+        real = fcntl.flock
+
+        def slow(fd, op):
+            real(fd, op)
+            if op == fcntl.LOCK_UN:
+                time.sleep(0.05)
+
+        with self.log() as path:
+            # One redirect around the whole block: redirect_stdout patches
+            # the global sys.stdout, so per-thread redirects race each other.
+            with mock.patch.object(explog, "fcntl", mock.Mock(
+                flock=slow, LOCK_EX=fcntl.LOCK_EX, LOCK_UN=fcntl.LOCK_UN,
+            )), contextlib.redirect_stdout(io.StringIO()), \
+                 contextlib.redirect_stderr(io.StringIO()):
+                threads = [
+                    threading.Thread(target=explog.main, args=([
+                        "add", "--section", "0.5", "--method", f"m{i}",
+                        "--verdict", "running",
+                    ],))
+                    for i in range(6)
+                ]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            ids = [json.loads(x)["id"] for x in path.read_text().splitlines() if x.strip()]
+            self.assertEqual(len(ids), 6)
+            self.assertEqual(sorted(ids), [1, 2, 3, 4, 5, 6])
 
     def test_corrupt_line_blocks_add_rather_than_minting_a_duplicate(self):
         # An unreadable line may hold the highest id, so max(ids)+1 can mint

@@ -50,6 +50,8 @@ def periodic_ioc(text: Sequence[int], period: int) -> float:
     1.180 while period 9 measures 1.281. No spike at any period does not
     exclude an interrupted periodic key.
     """
+    if period < 1:
+        raise ValueError(f"period must be >= 1, got {period}")
     cosets = [text[i::period] for i in range(period)]
     vals = [ioc(cs) for cs in cosets if len(cs) >= 2]
     return sum(vals) / len(vals) if vals else 0.0
@@ -83,6 +85,8 @@ def chi_squared(text: Sequence[int], reference: Sequence[float]) -> float:
     `ioc` returns 0.0 to sort a degenerate candidate last under higher-is-
     better. A sweep that hits an empty candidate should rank it away, not die.
     """
+    if len(reference) < N:
+        raise ValueError(f"reference needs {N} frequencies, got {len(reference)}")
     n = len(text)
     if not n:
         return math.inf

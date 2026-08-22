@@ -66,6 +66,11 @@ from collections.abc import Sequence
 from lib import corpus
 from lib.paths import CORPUS, REFERENCE
 
+# The alphabet size, as lib.cipher and lib.stats each carry it. Pinned to
+# gp.N by tests/test_corpus.py so the three cannot drift apart:
+# english_frequencies() feeds stats.chi_squared, which iterates stats.N.
+N = 29
+
 N_DEFAULT = 4
 _FLOOR_PENALTY = 2.0  # unseen n-grams score this many log10 units below the rarest seen
 
@@ -110,6 +115,11 @@ def _model(n: int) -> tuple[dict[tuple, float], float]:
 
 def score(text: Sequence[int], n: int = N_DEFAULT) -> float:
     """Mean log10 n-gram probability per position. Higher = more English."""
+    if n < 1:
+        # _model(0) counts one empty gram at probability 1.0, so every
+        # candidate scores exactly 0.0 -- and real scores are negative, so a
+        # miscomputed n silently promotes noise to the top of the ranking.
+        raise ValueError(f"n must be >= 1, got {n}")
     if len(text) < n:
         raise ValueError(f"need at least {n} runes to score")
     logs, floor = _model(n)
@@ -149,4 +159,4 @@ def english_frequencies() -> tuple[float, ...]:
     train = _training_indices()
     counts = Counter(train)
     n = len(train)
-    return tuple(counts[i] / n for i in range(29))
+    return tuple(counts[i] / n for i in range(N))

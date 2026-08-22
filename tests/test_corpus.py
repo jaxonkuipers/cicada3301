@@ -7,7 +7,7 @@ Run: python3 -m unittest discover -s tests
 
 import unittest
 
-from lib import cipher, corpus, stats
+from lib import cipher, corpus, fitness, stats
 
 c = corpus.load()
 
@@ -31,6 +31,7 @@ class TestAlphabetSize(unittest.TestCase):
         self.assertEqual(c.gp.N, len(c.gp.runes))
         self.assertEqual(c.gp.N, cipher.N)
         self.assertEqual(c.gp.N, stats.N)
+        self.assertEqual(c.gp.N, fitness.N)
 
 
 class TestOther(unittest.TestCase):
@@ -142,6 +143,22 @@ class TestSectionBoundaries(unittest.TestCase):
             t = s.text()
             head = c.gp.to_indices(s.headline.replace(" ", ""))
             self.assertEqual(list(t.indices[: len(head)]), head)
+
+    def test_last_owned_page_is_not_where_the_text_ends(self):
+        # The field says which page the section owns; text() follows the spill
+        # one page further. The old name read as "where the section ends" and
+        # quietly said otherwise, and nothing consumed it, so nothing noticed.
+        for sec_id, owned, ends in (("0.7", "page-14", "page-15"),
+                                    ("0.10", "page-32", "page-33")):
+            sec = c.section(sec_id)
+            self.assertEqual(sec.last_owned_page, owned, sec_id)
+            self.assertEqual(sec.pages()[-1].id, owned, sec_id)
+            self.assertEqual(sec.text().positions[-1].page, ends, sec_id)
+
+    def test_pages_and_sections_hold_the_same_runes(self):
+        # The spill must neither lose nor duplicate a rune.
+        self.assertEqual(sum(len(p.text()) for p in c.pages),
+                         sum(len(s.text()) for s in c.sections))
 
     def test_preceding_section_gets_the_spill(self):
         # 0.7 runs 9 runes into page-15 and owns the number square there.

@@ -438,7 +438,14 @@ class Section:
     # 0.11 begins 91 runes into page-33, proven by where each printed headline
     # sits. Zero for every other section.
     first_rune: int
-    last_page: str
+    # The last page this section OWNS -- NOT where text() ends. When the next
+    # section starts mid-page, this one's text spills onto that page and ends
+    # there: 0.7 owns through page-14 and spills into page-15, 0.10 owns
+    # through page-32 and spills into page-33. Renamed from `last_page`, which
+    # read as "where the section ends" and quietly said otherwise while nothing
+    # in the repo consumed it. For the other question ask
+    # `text().positions[-1].page`. Pinned by verify().
+    last_owned_page: str
     headline: str
     headline_form: str
     status: str
@@ -530,7 +537,7 @@ class Corpus:
                 id=r["section"],
                 first_page=r["first_page"],
                 first_rune=int(r["first_rune"]),
-                last_page=r["last_page"],
+                last_owned_page=r["last_page"],
                 headline=r["headline"],
                 headline_form=r["headline_form"],
                 status=r["status"],
@@ -727,6 +734,28 @@ def _check_headlines(c: Corpus) -> tuple[str, bool, str]:
     )
 
 
+def _check_section_page_spans(c: Corpus) -> tuple[str, bool, str]:
+    # Two claims at once: last_owned_page really is the last page of pages(),
+    # and the rune stream reconciles -- every rune on every page belongs to
+    # exactly one section, so the mid-page spill neither loses nor duplicates
+    # one. Without the second half a boundary edit could move runes between
+    # sections and only the per-section counts would notice.
+    bad = []
+    for sec in c.sections:
+        owned = sec.pages()
+        if owned and owned[-1].id != sec.last_owned_page:
+            bad.append(f"{sec.id}: owns {owned[-1].id}, csv says {sec.last_owned_page}")
+    page_runes = sum(len(p.text()) for p in c.pages)
+    section_runes = sum(len(s.text()) for s in c.sections)
+    if page_runes != section_runes:
+        bad.append(f"{page_runes} page runes vs {section_runes} section runes")
+    return (
+        "section page spans reconcile", not bad,
+        f"{page_runes} runes over {len(c.pages)} pages = sum over sections"
+        + (f", bad: {bad}" if bad else ""),
+    )
+
+
 def _check_sentences_match_transcription(c: Corpus) -> tuple[str, bool, str]:
     # sentences.csv and transcription/ are two records of the same runes;
     # nothing may diverge beyond the pinned, explained gaps.
@@ -786,6 +815,7 @@ def verify() -> list[tuple[str, bool, str]]:
         _check_speller(c),
         _check_headlines(c),
         _check_sentences_match_transcription(c),
+        _check_section_page_spans(c),
     ]
 
 

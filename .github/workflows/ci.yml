@@ -9,11 +9,18 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor the code targets (ruff's target-version) and the version
+        # agents actually develop on. Validating only the floor means a
+        # session runs one interpreter and CI blesses another.
+        python-version: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "${{ matrix.python-version }}"
 
       # First and separately: if the corpus or the parser drifted, every
       # derived result is void and a green test suite would be misleading.

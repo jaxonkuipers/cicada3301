@@ -277,9 +277,11 @@ def main() -> int:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
-    for path in (DISCORD_DB, *(DISCORD_DB.with_name(DISCORD_DB.name + s)
-                               for s in ("-wal", "-shm"))):
-        path.unlink(missing_ok=True)
+    # Only the sidecars: replace() is atomic and overwrites, so unlinking the
+    # index first bought nothing and reopened the very window the temp build
+    # exists to close -- a kill in between left no index at all.
+    for suffix in ("-wal", "-shm"):
+        DISCORD_DB.with_name(DISCORD_DB.name + suffix).unlink(missing_ok=True)
     tmp.replace(DISCORD_DB)
 
     print(f"{DISCORD_DB.relative_to(ROOT)}  ({DISCORD_DB.stat().st_size / 1e6:.1f} MB)")

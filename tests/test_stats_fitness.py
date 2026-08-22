@@ -78,6 +78,22 @@ class TestFitness(unittest.TestCase):
             first = next(s.english for s in c.sentences if s.section == sec and s.english)
             self.assertTrue(stats.find(train, c.gp.spell(first)), sec)
 
+    def test_degenerate_n_and_period_are_refused(self):
+        # _model(0) counts one empty gram at p=1.0, so every candidate scored
+        # exactly 0.0 -- and real scores are negative, so noise sorted first.
+        for n in (0, -1):
+            with self.assertRaises(ValueError, msg=n):
+                fitness.score([1, 2, 3, 4], n)
+        for period in (0, -3):
+            with self.assertRaises(ValueError, msg=period):
+                stats.periodic_ioc(list(range(50)), period)
+        with self.assertRaises(ValueError):
+            stats.chi_squared([1, 2], [0.5, 0.5])  # short reference
+
+    def test_alphabet_size_is_shared(self):
+        self.assertEqual(fitness.N, stats.N)
+        self.assertEqual(len(fitness.english_frequencies()), stats.N)
+
     def test_windowed_refuses_degenerate_geometry(self):
         # step=0 used to escape as "range() arg 3 must not be zero".
         for kwargs in ({"step": 0}, {"step": -5}, {"size": 2}):

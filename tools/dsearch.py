@@ -233,7 +233,11 @@ def search_runes(
 
 
 def windows(db: sqlite3.Connection, hits: list[Hit], w: int):
-    """Merge hits into conversation windows, in reading order."""
+    """Merge hits into conversation windows.
+
+    Messages within a channel come out in reading order; channels come out in
+    the order their first hit ranked.
+    """
     want: dict[str, set[int]] = {}
     notes = {h.msg_id: h.note for h in hits}
     for h in hits:
@@ -373,7 +377,19 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.ArgumentParser, 
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap, args = parse_args(argv)
+    """Run a search. Returns the exit code; does not raise SystemExit.
+
+    `die()` and argparse both signal failure by raising, which made the
+    annotation a half-truth and every caller catch two things.
+    """
+    try:
+        return _run(parse_args(argv))
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else 2
+
+
+def _run(parsed: tuple[argparse.ArgumentParser, argparse.Namespace]) -> int:
+    ap, args = parsed
     if not DISCORD_DB.exists():
         raise die(f"no index at {DISCORD_DB}. run python3 -m tools.build_discord_db")
 
@@ -412,7 +428,8 @@ def main(argv: list[str] | None = None) -> int:
             # records the negative instead of treating it as a crash.
             if args.json:
                 json.dump(
-                    json_header(args, searched, 0), sys.stdout, ensure_ascii=False
+                    json_header(args, searched, 0), sys.stdout,
+                    ensure_ascii=False, indent=1,
                 )
                 print()
             else:
