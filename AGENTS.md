@@ -1,67 +1,31 @@
 # Cicada 3301 solver
 
-Recover Cicada 3301's intended unresolved result from the preserved public route, authenticated communications and surviving artifacts. Liber Primus is the largest preserved unresolved surface in that route.
+Recover Cicada 3301's intended unresolved result from its preserved public route, authenticated communications and surviving artifacts. Liber Primus is the largest preserved unresolved surface within that route.
 
-## Start or resume a campaign
+## Campaign workflow
 
-1. A scheduled automation owns one causal campaign across runs. Resume its named worktree and synchronize it with `origin/main` while preserving campaign state. For a new campaign, create a current worktree with `python3 -m solver.cli.worktree create NAME` and continue from the printed path.
-2. Inspect `python3 -m solver.cli.explog running` and the route map in `corpus/README.md`. Choose a provenance-supported preserved transition and a causal question outside the exact operations already reserved.
-3. Open that transition under `corpus/records/` and its linked primary artifacts. Write the contemporary solver state, causal question, live mechanisms, observations and next discriminator in `research/campaigns/<name>/STATE.md`.
-4. Give fresh-context subagents the selected state and artifacts. Ask each for an independent causal construction and its observable consequences. The campaign owner compares and synthesizes their mechanisms.
-5. Give those mechanisms to a separate fresh-context archive reviewer. The reviewer runs several short Explog queries, opens relevant result ids, and reports exact prior coverage and tested assumptions. For retrospective Liber Primus community evidence, the reviewer also queries the 2019–2026 Discord archive, opens selected message ids, and reports the dates and source type:
+Each automation owns one causal campaign across scheduled runs. Resume its named managed worktree and compact `research/campaigns/<name>/STATE.md`. Create a managed worktree when opening a campaign, inspect active Explog reservations, and select a preserved transition from the map in [`corpus/README.md`](corpus/README.md).
 
-```text
-python3 -m solver.cli.explog "OBJECT TERM"
-python3 -m solver.cli.explog "OPERATION TERM"
-python3 -m solver.cli.explog show ID...
-python3 -m solver.cli.dsearch "OBJECT TERM"
-python3 -m solver.cli.dsearch "OPERATION TERM"
-python3 -m solver.cli.dsearch show ID...
-```
+Open that transition's record and linked primary artifacts. Record the contemporary state, causal question, live mechanisms, observations and next discriminator in `STATE.md`. Give the same state and artifacts to fresh-context subagents for independent causal constructions and observable consequences. Compare their mechanisms before choosing an operation.
 
-6. Select a mechanism by artifact causality and the state its outcomes recover or change. Reserve it with an exact object, operation and decision:
+Give the candidate mechanisms to a separate archive-review subagent. It searches Explog for exact prior experiment coverage and, when retrospective Liber Primus discussion is relevant, searches Discord. The reviewer opens selected result or message IDs and reports dates, source type, assumptions and tested coverage. Command syntax and the reservation lifecycle live in [`research/README.md`](research/README.md).
 
-```text
-python3 -m solver.cli.explog add --verdict running --campaign NAME --route ROUTE --object "OBJECT" --operation "OPERATION" --decision "OUTCOME INTERPRETATION"
-git add research/explog research/campaigns/NAME/STATE.md
-git commit -m "Reserve NAME operation"
-python3 -m solver.cli.worktree publish
-```
+Select operations through artifact causality and the historical state they could recover or change. Publish a running reservation before sustained computation. Reconstruct the relevant websites, services, requests, carriers, diagrams or instruments and test coherent alternatives and controls. Continue across scheduled runs while an in-scope discriminator can answer the campaign's causal question.
 
-7. Reconstruct and test the mechanism through coherent observations and pivots. Build the websites, services, requests, carriers, diagrams or instruments that make it concrete. Continue while an in-scope operation can answer the causal question. At each scheduled boundary, rewrite `STATE.md` to the current five fields, put durable evidence in `FINDINGS.md`, commit the checkpoint and publish it.
+At each boundary, replace `STATE.md` with current state and put durable measurements and resolved mechanisms in `FINDINGS.md`. Close each reservation with exact coverage, result and evidence. A blocker names the unavailable evidence, affected discriminators and recovery that would reopen them.
 
-Close the reservation with its exact tested coverage, result and evidence:
-
-```text
-python3 -m solver.cli.explog add --verdict negative --resolves ID --coverage "EXACT CELLS TESTED" --result "OBSERVATION AND IMPLICATION" --evidence research/campaigns/NAME/FINDINGS.md
-```
-
-Use `positive` for a surviving result and `blocked` for an exact evidential blocker. A blocker identifies the unavailable evidence, the discriminators that require it and the recovery that would reopen the question.
-
-## Work from the historical state
+## Historical reasoning
 
 Use the software, protocols, cultural knowledge and network capabilities available to a capable solver at the selected transition: Tor and onion services, OutGuess, OpenPGP, image and audio tools, emulation and contemporary cipher implementations. Modern computation can replay or accelerate an artifact-selected operation.
 
-Think with the artifacts. Reconstruct protocol exchanges, operate faithful local replicas, sketch dependencies, manipulate carriers and invent mechanisms from objects Cicada placed together. Earlier transitions supply demonstrated design language and system roles.
+Think with the artifacts. Reconstruct protocol exchanges, manipulate carriers, sketch dependencies and infer system roles from objects Cicada placed together. Earlier transitions supply demonstrated design language. Promote a result when evidence selects its object, representation, consumer and operation, and an unused prediction survives cheaper alternatives and controls. A selected cipher predicts plaintext beyond its fit. Prior coverage applies to the recorded operation.
 
-Promote a result when artifact evidence selects its object, representation, consumer and operation. Run the cheapest alternatives and controls, then require an unused prediction. A selected cipher predicts plaintext beyond its fit. Prior coverage applies to the exact operation recorded.
+Use local files and public sources. Never initiate authentication, enter credentials or attempt a login.
 
-Use local files and publicly accessible sources. Never initiate authentication, enter credentials or attempt a login.
+## Durable state
 
-## Keep durable state compact
+The corpus route map leads to one compact record and its owned evidence. `research/SETTLED.md` contains constraints shared by several campaigns. `discord.db` preserves retrospective community discussion. Explog stores active reservations and exact experiment conclusions.
 
-`corpus/README.md` is the route map; each `corpus/records/` directory supplies one transition or signed statement and the evidence it owns. `research/SETTLED.md` holds constraints used by several campaigns. `discord.db` preserves a 2019–2026 retrospective Liber Primus community archive. Explog stores active locks and exact experiment results.
+A campaign directory contains compact `STATE.md`, concise `FINDINGS.md`, reusable scripts and gitignored `out/`. Add a conclusion to `SETTLED.md` when several campaigns need it. Update a route record when chronology or preservation evidence changes. Give every positive result to a fresh-context reviewer for prior-art, post-selection, instrument and cheaper-alternative objections.
 
-A campaign directory contains `STATE.md`, concise `FINDINGS.md`, reusable scripts and gitignored `out/`. At every boundary, replace `STATE.md` with the current contemporary state and artifacts, causal question, live mechanisms, observations and implications, and next discriminator. Put resolved mechanisms and supporting evidence in `FINDINGS.md`. Add a conclusion to `research/SETTLED.md` when several campaigns need it. Update a corpus record when chronology or preservation evidence changes.
-
-Give a positive result to a fresh-context reviewer with its claim, evidence and archive tools. Incorporate its prior-art, post-selection, instrument and cheaper-alternative objections before promoting the result.
-
-## Verify
-
-```text
-python3 -m solver.corpus
-python3 -m unittest discover -s tests
-ruff check solver tests
-```
-
-Use corpus objects through `solver.corpus`, rune arithmetic through `c.gp`, `solver.runes` and `solver.cipher`, and solved text through `solutions/`. Write Markdown prose as one physical line per semantic paragraph.
+Verify checkpoints with `python3 -m solver.corpus`, `python3 -m unittest discover -s tests` and `ruff check solver tests`. Use corpus objects through `solver.corpus`, rune arithmetic through `c.gp`, `solver.runes` and `solver.cipher`, and accepted plaintext through `solutions/`. Write Markdown prose as one physical line per semantic paragraph.

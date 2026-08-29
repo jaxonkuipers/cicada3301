@@ -1,19 +1,7 @@
 # R13.4 — interactive onion, retained ISO state and ICMP transport
 
-**Solver state.** A contemporary solver had the ISO files, Gematria table and Tor text service. Commands included `help`, integer factorization, `primes`, `count`, `hello` and `hint`/`clue`.
+The R13.3 Tor text service accepted commands including `help`, integer factorization, `primes`, `count`, `hello` and `hint`/`clue`. `hello` returned a hex-dumped [signed message](artifacts/communications/2013-01-telnet-hello.asc) routing to `xsxnaksict6egxkq.onion`. XORing `hint`/`clue` with R13.1's `_560.00` read `You can't see the forest when you're looking at the trees.` The service's `count` acted as a Gematria oracle, and its prime list omitted primes 73 through 1223.
 
-**Dependencies consumed.** R13.3 supplies the interactive onion service; R13.1 supplies retained ISO file `_560.00`; R13.2 supplies the Gematria table.
+Onion 2 first said “Patience is a virtue,” then served the signed instruction [“Sometimes one must knock on the sky and listen to the sound”](artifacts/communications/2013-01-knock-on-the-sky.asc). Solvers identified its backend and inspected ICMP echo replies. Interleaved sequence-1 packets carried a repeating hex stream; concatenating, hex-decoding and gunzipping `message.txt.asc` produced a valid [signed pointer](artifacts/communications/2013-01-onion-pointer.asc) to `pklmx2eeh6fjt7zf.onion`.
 
-**Artifact and action.** `hello` returned a hex-dumped signed message routing to `xsxnaksict6egxkq.onion`. `hint`/`clue`, XORed with ISO file `_560.00`, read `You can't see the forest when you're looking at the trees.` The service's `count` acted as a Gematria oracle; its prime list deliberately omitted primes 73 through 1223. Onion 2 first said “Patience is a virtue,” then the signed message “You already have everything you need to continue. Sometimes one must knock on the sky and listen to the sound.”
-
-Solvers identified the onion backend and inspected ICMP echo replies. Interleaved packets with sequence number 1 carried a repeating hex stream; concatenating it, decoding hex and gunzipping `message.txt.asc` produced a valid signed pointer to `pklmx2eeh6fjt7zf.onion`.
-
-**Resulting state.** The third onion instructed solvers to stand by for coordinates.
-
-**State handed forward.** The coordinate-stage onion and retained ISO/Gematria state pass to R13.5.
-
-**Evidence.** The authenticated route messages are [`telnet hello`](artifacts/communications/2013-01-telnet-hello.asc), [`knock on the sky`](artifacts/communications/2013-01-knock-on-the-sky.asc) and [`onion pointer`](artifacts/communications/2013-01-onion-pointer.asc).
-
-**Later evidence.** This route combined Tor, a text protocol, ICMP payload capture and retained ISO state.
-
-**Preservation boundary.** The historical account derived a clearnet backend from an error response; intent of that leak is unknown. Modern hosts or addresses are not route evidence.
+The third onion instructed solvers to await coordinates, passing the route and retained ISO/Gematria state to [R13.5](../R13.5/). A historical error response exposed a clearnet backend, but its intent is unknown; modern behavior at those addresses carries no route provenance.

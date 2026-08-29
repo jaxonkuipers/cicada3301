@@ -1,11 +1,6 @@
 # Cicada 3301 corpus and route
 
-This directory is organized by route record. Each `records/Rxx.x/README.md` explains one transition or signed statement, and its `artifacts/` directory owns the preserved objects introduced there. Later records link back to those canonical objects.
-Read this map, then open the one record needed for the current causal question.
-
-Transition records state the solver's input state, consumed dependencies, action, resulting state, handoff, evidence and preservation boundary. Statement records preserve the context, signed statement, operational effect, evidence and preservation boundary.
-Evidence is **authenticated** when preserved bytes verify with Cicada's OpenPGP key, **reproduced** when independent solver reconstruction established the operation and result, **reported** when an event survives through solver records, and **partial** when a transition combines established state with a missing or reported segment. Each record states which source bytes survive locally.
-Cicada's fingerprint is `6D85 4CD7 9333 22A6 01C3 286D 181F 01E5 7A35 090F`; the repeatedly named short ID is `7A35090F`.
+Each route record joins one historical transition or signed statement to the evidence it owns. Start with this map, then open the record selected by the campaign's causal question. `authenticated` means local bytes verify under Cicada's OpenPGP key; `reproduced` means the operation and result were reconstructed; `reported` identifies surviving solver testimony; `partial` combines established state with a missing or reported segment. Cicada's fingerprint is `6D85 4CD7 9333 22A6 01C3 286D 181F 01E5 7A35 090F`, usually named by short ID `7A35090F`.
 
 ## Route-state map
 
@@ -36,15 +31,11 @@ Cicada's fingerprint is `6D85 4CD7 9333 22A6 01C3 286D 181F 01E5 7A35 090F`; the
 | [R16.1](records/R16.1/) | signed direction to Liber Primus | words, meaning and numbers assigned authored roles | authenticated |
 | [R17.1](records/R17.1/) | signed false-path warning | OpenPGP remains the provenance boundary | authenticated |
 
-The machine-readable graph is [`route.csv`](route.csv).
-Its `kind` column distinguishes transitions from signed statements. Its `predecessor` column records the primary route edge. Each transition record's dependency field records every cross-route input.
-Observed communication order, signer-asserted time and the route that introduced each message are indexed in [`communications.csv`](communications.csv).
+[`route.csv`](route.csv) is the machine-readable graph; `kind` distinguishes transitions from statements and `predecessor` records the primary edge. [`communications.csv`](communications.csv) indexes observed order, signer-asserted time and the route introducing each message.
 
 ## Current public state
 
-The authenticated route continues through R17.1. R14.7 is its latest public puzzle-artifact delivery.
-A successful R14.6 solver possessed recipient state outside the surviving public corpus.
-Liber Primus is the complete unresolved public delivery. The authenticated R16.1 message explicitly names it as the way; feature and operation selection remain open.
+The authenticated route continues through R17.1. R14.7 is its latest public puzzle delivery, and a successful R14.6 solver possessed recipient state absent from the public corpus. R16.1 explicitly identifies Liber Primus as the continuing way.
 
 ## Layout
 
@@ -55,12 +46,4 @@ Liber Primus is the complete unresolved public delivery. The authenticated R16.1
 | [`route.csv`](route.csv) | machine-readable route graph, record kind and evidence status |
 | [`communications.csv`](communications.csv) | observed and signer-asserted chronology of preserved messages |
 
-Immutable files under `records/*/artifacts/`, `records/*/sources/` and `identity/` are pinned by [`MANIFEST.sha256`](MANIFEST.sha256). Verify them with `python3 -m solver.corpus_manifest verify`. A deliberate evidence-byte change is recorded with `python3 -m solver.corpus_manifest update` and reviewed with its provenance change.
-
-The R14 records follow Cicada's release order.
-Cicada published the images in order; community assembly supplies the `intro-00`–`intro-16` labels.
-Each record's preservation boundary records the surviving original images, audio, live services and individualized material.
-Attribution follows the evidence and signature status stated in that record.
-Historical domains and onion addresses identify route objects; responses from modern hosts carry modern provenance.
-
-Retrospective Liber Primus discussion from 13 community channels spanning 2019–2026 is searchable in [`../discord.db`](../discord.db). Campaign findings hold new reconstruction and experiment results.
+Immutable evidence under `records/*/artifacts/`, `records/*/sources/` and `identity/` is pinned by [`MANIFEST.sha256`](MANIFEST.sha256) and verified with `python3 -m solver.corpus_manifest verify`. Historical addresses name route objects; any modern response receives modern provenance. [`../discord.db`](../discord.db) contains retrospective Liber Primus discussion from 13 community channels spanning 2019–2026.

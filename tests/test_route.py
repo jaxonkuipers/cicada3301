@@ -8,23 +8,7 @@ from pathlib import Path
 from solver.paths import CORPUS
 
 ROUTE_ID = re.compile(r"^R\d{2}\.\d+$")
-TRANSITION_FIELDS = (
-    "**Solver state.**",
-    "**Dependencies consumed.**",
-    "**Artifact and action.**",
-    "**Resulting state.**",
-    "**State handed forward.**",
-    "**Evidence.**",
-    "**Later evidence.**",
-    "**Preservation boundary.**",
-)
-STATEMENT_FIELDS = (
-    "**Context.**",
-    "**Signed statement.**",
-    "**Operational effect.**",
-    "**Evidence.**",
-    "**Preservation boundary.**",
-)
+LEGACY_FIELD = re.compile(r"^\*\*[^*]+\.\*\*", re.MULTILINE)
 
 
 def rows(path: Path) -> list[dict[str, str]]:
@@ -68,7 +52,7 @@ class RouteIntegrity(unittest.TestCase):
                 self.assertIn(predecessor, seen, (row["route"], predecessor))
             seen.add(row["route"])
 
-    def test_every_record_uses_its_kind_schema(self):
+    def test_every_record_is_indexed_compact_prose(self):
         indexed = {CORPUS / row["path"] for row in self.route_rows}
         present = set((CORPUS / "records").glob("R*/README.md"))
         self.assertEqual(present, indexed)
@@ -76,17 +60,10 @@ class RouteIntegrity(unittest.TestCase):
         for row in self.route_rows:
             path = CORPUS / row["path"]
             text = path.read_text(encoding="utf-8")
-            self.assertTrue(text.startswith(f"# {row['route']}"), path)
-            fields = TRANSITION_FIELDS if row["kind"] == "transition" else STATEMENT_FIELDS
-            forbidden = (
-                STATEMENT_FIELDS[:3]
-                if row["kind"] == "transition"
-                else TRANSITION_FIELDS[:5]
-            )
-            for field in fields:
-                self.assertIn(field, text, f"{path}: {field}")
-            for field in forbidden:
-                self.assertNotIn(field, text, f"{path}: unexpected {field}")
+            self.assertRegex(text.splitlines()[0], rf"^# {re.escape(row['route'])} — .+")
+            self.assertEqual(text.count("\n# "), 0, path)
+            self.assertNotIn("\n## ", text, path)
+            self.assertIsNone(LEGACY_FIELD.search(text), path)
             record_link = Path(row["path"]).parent.as_posix() + "/"
             self.assertIn(f"[{row['route']}]({record_link})", route_map)
 

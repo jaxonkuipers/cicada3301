@@ -1,17 +1,7 @@
 # R14.3 — onion 3, the 1033 square and the 2013 key
 
-**Solver state.** Onion 3 grew a distinct 256-byte hex payload under `<!--1033-->`. A leaked Apache status surface later carried two opposed JPEGs with data between them.
+Onion 3 grew a distinct 256-byte hex payload under `<!--1033-->`. A later Apache status surface carried two opposed JPEGs with data between them; comparing the forward and reversed files recovered a 5×5 magic square with constant 1033. Subsequent images supplied `0.1 WELCOME`, including “SOME WISDOM” and the 1033 word square.
 
-**Dependencies consumed.** R14.2 supplies onion 3 and `0.0 A WARNING`; R13.2 supplies the authored word `DIVINITY` and the Gematria system.
+OutGuess produced the signed instruction [“Let the text guide you”](artifacts/communications/2014-01-let-the-text-guide-you.asc) and an 18-rune ciphertext. `DIVINITY`, already present in R13.2's Instar poem, decrypted the line. `WELCOMEPILGRIMTOTHE`, text on the newly received page, then decoded the runic locator `avowyfgl5lkzfj3n.onion`.
 
-**Artifact and action.** Comparing the forward and reversed JPEGs recovered a 5×5 magic square with constant 1033. Later images supplied `0.1 WELCOME`, including “SOME WISDOM” and the 1033 word square. OutGuess produced the signed instruction `Let the text guide you` and an 18-rune ciphertext. The word `DIVINITY`, already available in the 2013 Instar poem, decrypted that line; `WELCOMEPILGRIMTOTHE`, text on the page just received, then decoded its runic locator.
-
-**Resulting state.** The address was `avowyfgl5lkzfj3n.onion`.
-
-**State handed forward.** Onion 4, the 1033 square, `0.1 WELCOME` and accumulated introduction state pass to R14.4.
-
-**Evidence.** The signed selector is [`2014-01-let-the-text-guide-you.asc`](artifacts/communications/2014-01-let-the-text-guide-you.asc); the authenticated carrier and the explicit R13.2 dependency preserve the known-answer chain.
-
-**Later evidence.** This is the clearest demonstrated cross-year dependency: the intended key for a 2014 object came from authored 2013 material and was already held when the consumer arrived. The later Liber Primus page that prints `DIVINITY` had not yet been served.
-
-**Preservation boundary.** Intent of the Apache status exposure is not authenticated. The repeated 256-byte payload has no established consumer.
+Onion 4, the square, `0.1 WELCOME` and the accumulated introduction pass to [R14.4](../R14.4/). This establishes a cross-year dependency in which authored 2013 material supplied a 2014 key before its consumer appeared. The intent of the Apache exposure and the 256-byte payload remain unknown.

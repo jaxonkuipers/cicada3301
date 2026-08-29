@@ -1,17 +1,7 @@
 # R14.4 — onion 4's koan, instruction and route grid
 
-**Solver state.** Onion 4 initially displayed another 256-byte hex string under `<!--3301-->`, then later served a signed gzip carrier containing four images now assembled as introduction pages 06, 07, 09 and 08.
+Onion 4 initially displayed another 256-byte hex string under `<!--3301-->`, then served a signed gzip carrier containing four images now assembled as introduction pages 06, 07, 09 and 08. They formed `0.2 A KOAN` and an instruction to do four unreasonable things.
 
-**Dependencies consumed.** R14.3 supplies onion 4 and the accumulated introduction pages; R12.1 establishes OutGuess as an authored carrier operation.
+OutGuess on intro-08 yielded an unsigned grid. Transposing it with fixed column order `1736254` read `TO BELIEVE TRUTH IS TO DESTROY POSSIBILITY`, the locator `q4utgdi2n4m4uim5`, and residual `9133`. The 16-character hostname, koan pages and residual pass to [R14.5](../R14.5/); older walkthroughs sometimes append `9133`, although version-2 onion hostnames contain 16 characters.
 
-**Artifact and action.** The readable pages formed `0.2 A KOAN` and an instruction to do four unreasonable things. OutGuess on intro-08 yielded an unsigned grid. The fixed column order `1736254` transposed it exactly to `TO BELIEVE TRUTH IS TO DESTROY POSSIBILITY`, the 16-character locator `q4utgdi2n4m4uim5`, and residual `9133`.
-
-**Resulting state.** The solver reached `q4utgdi2n4m4uim5.onion`.
-
-**State handed forward.** Onion 5, the koan/instruction pages and residual `9133` pass to R14.5.
-
-**Evidence.** The source object is [`2014-01-fallen-behind-outguess-08.asc`](artifacts/communications/2014-01-fallen-behind-outguess-08.asc); the grid, column order and readout are stated above.
-
-**Later evidence.** The old walkthrough sometimes concatenates residual `9133` onto the onion; version-2 onion hostnames are 16 characters, and the preserved route hostname is `q4utgdi2n4m4uim5`.
-
-**Preservation boundary.** The 3301-labelled 256-byte string lacks an established operation. The unsigned grid's carrier provenance, not a PGP signature, supports its route role.
+The source carrier is [preserved here](artifacts/communications/2014-01-fallen-behind-outguess-08.asc). The unsigned grid's carrier provenance supports its route role. The 3301-labelled 256-byte string has no established operation.

@@ -1,10 +1,6 @@
 # R13.5 — posters, telephones, data slices and Shamir routing
 
-**Solver state.** `pklmx2eeh6fjt7zf.onion` eventually supplied physical coordinates. Each recovered poster combined a phone number ending in 3301 or 1033 with a two-letter/four-digit access code.
-
-**Dependencies consumed.** R13.4 supplies the coordinate onion; R13.1 supplies the retained ISO datasets; R13.2 supplies Gematria values for the poster access codes.
-
-**Artifact and action.** Calling a poster number and entering the Gematria value of its access code returned `Dataset`, `Offset` and hex `Data`. XORing the data with the named ISO file beginning at that offset yielded a location-specific onion. The preserved routes are:
+`pklmx2eeh6fjt7zf.onion` eventually supplied physical coordinates. Each recovered poster paired a phone number ending in 3301 or 1033 with a two-letter/four-digit access code. Calling the number and entering the code's Gematria value returned `Dataset`, `Offset` and hex `Data`; XORing that data with the named R13.1 ISO file at the supplied offset yielded a location-specific onion.
 
 | Location | Telephone | Access code | Data source and offset | Resulting onion |
 | --- | --- | --- | --- | --- |
@@ -16,14 +12,6 @@
 | Portland, Oregon | `+1 424-999-1033` | `GH: 1723` | `560.13`, offset 12821 | `gbyh7znm6c7ezsmr.onion` |
 | Columbus, Georgia | `+1 469-251-1033` | `NR: 2911` | `560.17`, offset 617 | no local onion/share preserved |
 
-Each local onion supplied a Shamir Secret Sharing Scheme share. Any five recovered shares reconstructed `p7amjopgric7dfdi.onion`.
+Each local onion supplied a Shamir share. Any five reconstructed `p7amjopgric7dfdi.onion`, which recipient accounts describe as a signed registration page requesting a fresh anonymous webmail account and GPG key. It issued an identification number for a one-registration, timed test reportedly containing 19 epistemic, logical and programming questions and cookies named `167` and `761`. Accepted state passes to [R13.6](../R13.6/).
 
-**Resulting state.** Recipient reconstructions describe the shared onion as displaying a signed welcome: create a fresh anonymous webmail account and GPG key, submit the email to receive an identification number, and use that number to begin a timed test; one registration was allowed per person. The test reportedly contained 19 epistemic, logical and programming questions and set cookies named `167` and `761`.
-
-**State handed forward.** The shared onion yields anonymous email/key registration, identification state and a timed assessment for R13.6.
-
-**Evidence.** Exact signed public-route messages through R13.4 are indexed in [`communications.csv`](../../communications.csv). The poster calls, local shares, shared-onion welcome and question service survive through contemporary reconstruction and the locally preserved [retrospective source record](sources/retrospective-solve-record.md); their carrier bytes are absent locally.
-
-**Later evidence.** This stage deliberately combined geographically distributed state into a common endpoint and then split solvers into individualized registration and assessment.
-
-**Preservation boundary.** Six share-bearing locations and five exact share strings survive in the retained reconstruction; the route was described as a threshold over ten. Annapolis was reportedly found by wardialing rather than physical recovery. The exact signed welcome carrier, onion wrapper, question implementation, cookies and complete test are absent from the local corpus.
+Six share-bearing locations and the five exact reconstruction shares survive in the local [retrospective record](sources/retrospective-solve-record.md); the route was described as 5-of-10, and Annapolis was reportedly found by wardialing. Original poster carriers, the signed welcome, onion wrapper, test implementation and complete questions are unavailable.
