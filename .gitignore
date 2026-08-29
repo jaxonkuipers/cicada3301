@@ -7,8 +7,9 @@ discord.db-shm
 
 .ruff_cache/
 
-# Bulk attack output stays out of git; findings and scripts are committed.
-research/attacks/*/out/
+# Campaign findings and scripts are committed; generated output stays local.
+research/campaigns/*/out/
+research/explog/.lock
 
 # Same convention at the repo root; peers write caches to ./out/.
 /out/

@@ -1,41 +1,45 @@
-# Research workspace
-
-Root `HISTORY.md` reconstructs the authenticated route. `SETTLED.md` contains the compact established state needed across investigations. This directory begins with no experiment history.
-
-## Layout
+# Research
 
 | Path | Contents |
 | --- | --- |
-| `SETTLED.md` | durable facts and cross-campaign conclusions |
-| `attacks/` | one committed investigation per directory |
-| `explog/` | append-only JSONL shards written by solver wakes |
-| `surveys/` | cited community or public-source evidence |
-| `shared/` | reusable research instruments |
+| `campaigns/<name>/STATE.md` | compact state carried across scheduled runs |
+| `campaigns/<name>/FINDINGS.md` | evidence, exact coverage and conclusions |
+| `campaigns/<name>/*.py` | reusable reconstruction and experiment code |
+| `explog/*.jsonl` | active operation locks and closed results by wake |
+| `SETTLED.md` | conclusions that constrain several campaigns |
 
-## Retrieve current work
-
-The archive reviewer checks the experiment record and community discussion after candidate mechanisms have been formed:
+## Retrieve prior work
 
 ```text
-python3 -m tools.explog "OBJECT OPERATION TERMS"
-python3 -m tools.explog show ID...
-python3 -m tools.explog running
-python3 -m tools.dsearch "OBJECT OPERATION TERMS"
-python3 -m tools.dsearch show ID...
+python3 -m solver.cli.explog "OBJECT TERM"
+python3 -m solver.cli.explog "OPERATION TERM"
+python3 -m solver.cli.explog show ID...
+python3 -m solver.cli.explog running
+python3 -m solver.cli.dsearch "OBJECT TERM"
+python3 -m solver.cli.dsearch "OPERATION TERM"
+python3 -m solver.cli.dsearch show ID...
 ```
 
-Explog queries return compact matching records. `show` opens selected records and `running` lists current locks. Dsearch returns matching messages; its `show` command opens surrounding conversations.
+Run several short searches, then open only the relevant ids. Explog search returns conclusions and unresolved locks; `show` opens complete events. Dsearch searches message text and attachment/embed metadata, returns compact individual messages, and opens selected surrounding conversations. Its 109,917 messages cover 13 retrospective Liber Primus channels from 2019 through 2026.
 
-## Record work
+## Record a campaign
 
-Use `research/attacks/<slug>/` for an investigation, matching the Explog method. Preserve executable code and concise findings; keep generated output under the investigation's gitignored `out/` directory. Add a running claim before sustained computation and resolve it with exact coverage and a result.
-
-Managed wakes create isolated worktrees with `python3 -m tools.worktree create NAME` and publish committed checkpoints with `python3 -m tools.worktree publish`.
-
-Run research code from the repository root:
+Create `research/campaigns/<name>/` and reserve sustained computation:
 
 ```text
-PYTHONPATH=. python3 research/attacks/<slug>/thing.py
+python3 -m solver.cli.explog add --verdict running --campaign NAME --route ROUTE --object "OBJECT" --operation "OPERATION" --decision "OUTCOME INTERPRETATION"
 ```
 
-Use `lib.corpus` for corpus objects and `research/shared/book.py` for the 2,901-rune solved control stream. Use `fitness.english_frequencies()` as the chi-squared reference and evaluate candidate plaintext with `fitness.judge` plus direct reading.
+Close the operation with `negative`, `positive` or `blocked`:
+
+```text
+python3 -m solver.cli.explog add --verdict VERDICT --resolves ID --coverage "EXACT CELLS TESTED" --result "OBSERVATION AND IMPLICATION" --evidence research/campaigns/NAME/FINDINGS.md
+```
+
+When a campaign is ended administratively, release its reservation with `blocked`, coverage `no cells; campaign ended by user`, and a result naming the administrative release. A later campaign may reserve that operation again.
+
+Run campaign code from the repository root with `PYTHONPATH=. python3 research/campaigns/<name>/script.py`. Store generated files under the campaign's `out/` directory.
+
+Create a managed worktree with `python3 -m solver.cli.worktree create NAME`. Publish the committed running reservation before sustained work, then publish each committed boundary checkpoint with `python3 -m solver.cli.worktree publish`.
+
+At a boundary, rewrite `STATE.md` to its current contemporary state, causal question, live mechanisms, observations and implications, and next discriminator. Keep durable evidence and resolved mechanisms in `FINDINGS.md`.

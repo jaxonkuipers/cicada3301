@@ -2,7 +2,7 @@
 
 75 pages: a 17-page solved intro (`intro-00`–`intro-16`) and a 58-page body (`page-00`–`page-57`), of which only `page-56` and `page-57` are solved.
 
-This directory is the output of the 2014 interactive route. See the cross-round [`HISTORY.md`](../../../HISTORY.md) before treating its pages as an isolated puzzle.
+This directory is the output of the 2014 interactive route. Read the [`R14.7 delivery step`](../../steps/R14.7-liber-primus-delivery.md) before treating its pages as an isolated puzzle.
 
 ## Page numbers
 
@@ -73,7 +73,7 @@ So the unsolved pages are the files Cicada published, unmodified. Any measuremen
 Statements about these two **files** — byte hashes, file sizes, "lacks an ICC profile" — describe a concatenation, not a page.
 
 - **Transcriptions** come from splitting `liber-primus__transcription--master.txt` on `%`. Chunk 0 is the delimiter legend, not a page. Chunk 1 is book page 1, and chunks 2–73 are book pages 3–74; book pages 0 and 2 carry no runes and so consume no chunk. Chunks are trimmed of outer whitespace and normalized to LF.
-- **`sentences.csv`** is a local index joining upstream's sentence-segmented transcription against its translation file on their shared sentence ids, collapsing upstream's double-spacing to single spaces. One local repair on top of upstream: sentence `0.8.0.14` was missing the final ᛗ of the printed word ᛚᚳᛇᛏᚷᚣᛟᛗ (page-20, printed line 6), verified against the page image; the transcription always had it. With that rune restored, sentences.csv reconstructs every section's rune stream exactly, except section 0.1's deliberate 76-rune tail gap (the unencrypted intro-05 word list, which upstream's sentence file never segmented). `lib.corpus.verify()` enforces both facts.
+- **`sentences.csv`** is a local index joining upstream's sentence-segmented transcription against its translation file on their shared sentence ids, collapsing upstream's double-spacing to single spaces. One local repair on top of upstream: sentence `0.8.0.14` was missing the final ᛗ of the printed word ᛚᚳᛇᛏᚷᚣᛟᛗ (page-20, printed line 6), verified against the page image; the transcription always had it. With that rune restored, sentences.csv reconstructs every section's rune stream exactly, except section 0.1's deliberate 76-rune tail gap (the unencrypted intro-05 word list, which upstream's sentence file never segmented). `solver.corpus.verify()` enforces both facts.
 - **`solutions/`** is the English side of those same sentences, grouped by section.
 
 ## Page assignment evidence

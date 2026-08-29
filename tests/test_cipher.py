@@ -4,12 +4,12 @@ These prove three things at once: the cipher primitives, the measured
 interrupter semantics (plaintext F passes through, keystream holds), and the
 corpus alignment (section boundaries, sentences, speller). The interrupter
 positions are taken from the known plaintext -- during a real attack they are
-part of the unknown key; see lib/cipher's module docstring.
+part of the unknown key; see solver/cipher's module docstring.
 """
 
 import unittest
 
-from lib import cipher, corpus
+from solver import cipher, corpus
 
 c = corpus.load()
 gp = c.gp

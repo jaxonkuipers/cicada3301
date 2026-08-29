@@ -1,8 +1,8 @@
-"""Regression tests for lib.runes extraction and query canonicalisation."""
+"""Regression tests for solver.runes extraction and query canonicalisation."""
 
 import unittest
 
-from lib import corpus, runes
+from solver import corpus, runes
 
 
 def runs(text, notation=None):

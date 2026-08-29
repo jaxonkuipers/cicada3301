@@ -27,12 +27,12 @@ validate_commit() {
     echo "pre-push: validating $local_sha in an isolated worktree"
     (
         cd "$checkout"
-        python3 -m lib.corpus
+        python3 -m solver.corpus
         python3 -m unittest discover -s tests
         if command -v ruff >/dev/null 2>&1; then
-            ruff check lib tools tests
+            ruff check solver tests
         elif command -v pipx >/dev/null 2>&1; then
-            pipx run ruff==0.15.20 check lib tools tests
+            pipx run ruff==0.15.20 check solver tests
         else
             echo "pre-push: ruff or pipx is required" >&2
             exit 1

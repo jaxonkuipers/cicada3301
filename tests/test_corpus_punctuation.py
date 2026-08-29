@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import unittest
 
-from lib import corpus
+from solver import corpus
 
 
 def apostrophes_in_sentences(c):

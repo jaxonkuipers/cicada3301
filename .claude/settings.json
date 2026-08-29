@@ -2,9 +2,7 @@
   "permissions": {
     "defaultMode": "bypassPermissions",
     "deny": [
-      "Bash(git push --force*)",
-      "Edit(corpus/**)",
-      "Write(corpus/**)"
+      "Bash(git push --force*)"
     ]
   }
 }

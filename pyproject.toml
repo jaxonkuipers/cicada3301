@@ -1,5 +1,5 @@
-# Not a package: lib/ and tools/ run in place with `python3 -m`, stdlib only.
-# This file only configures tooling.
+# The stdlib-only solver package and its CLI run in place with `python3 -m`.
+# This file configures repository tooling; the project is not distributed.
 
 [tool.ruff]
 target-version = "py311"

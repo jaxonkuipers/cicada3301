@@ -1,10 +1,11 @@
-"""Tests for lib.stats and lib.fitness against the measured corpus facts."""
+"""Tests for solver.stats and solver.fitness against measured corpus facts."""
 
+import hashlib
 import random
 import unittest
 from collections import Counter
 
-from lib import cipher, corpus, fitness, stats
+from solver import cipher, corpus, fitness, stats
 
 c = corpus.load()
 
@@ -56,17 +57,16 @@ class TestStats(unittest.TestCase):
 
 class TestFitness(unittest.TestCase):
     def test_training_set_pinned(self):
-        # Any change to the training text (corpus/2012/mabinogion, sentences.csv,
-        # reference/english/) rescales every fitness score and breaks
-        # comparability with logged experiment scores. Deliberate changes
-        # update this pin and say so in the commit.
+        # Any change to the frozen counts rescales fitness scores and breaks
+        # comparability with logged experiments. The model retains the length
+        # and digest of the rune-index stream it replaced, while an asset hash
+        # catches any mutation of the sufficient statistics themselves.
         # The earlier CQU -> KW spelling emitted one extra rune at each of
         # the 39 CQU occurrences (C+QU used to emit C twice, under the old
         # Q -> C rule as well).
-        self.assertEqual(len(fitness._training_indices()), 650_377)
-        # By content too: corpus/2012/mabinogion and reference/english are outside
-        # corpus.EXPECTED_CORPUS_SHA, and a length pin misses an equal-length
-        # edit that would silently rescale every logged score.
+        self.assertEqual(fitness.training_length(), 650_377)
+        # By content too: a length pin misses an equal-length edit that would
+        # silently rescale every logged score.
         # spell() applies the author's
         # QU -> KW (attested CWESTIAN, 0.4's plain tail) and CQU -> KW.
         # 563 QU occurrences in the training text change their second rune;
@@ -77,20 +77,24 @@ class TestFitness(unittest.TestCase):
             fitness.training_sha256(),
             "ffe950c4caf537a065819e3e5f0d56bb76015fa74023c7bf656f6ec604d0bb56",
         )
+        self.assertEqual(
+            hashlib.sha256(fitness._MODEL_PATH.read_bytes()).hexdigest(),
+            "14509e5d79260f7e3a48dbd53dd95ffe9844c51ab29347e79fb0b2b2e44b2c5d",
+        )
 
-    def test_solved_sections_are_in_the_training_text(self):
-        # Guards the module docstring against drifting back to claiming a
-        # hold-out it does not have: 0.3 and 0.14 ARE trained on, so absolute
-        # scores over solved plaintext are flattered by memorisation and only
-        # the ranking (test_judge_ranks_known_solution_first) is evidence.
-        # Measured at +0.08..+0.12 log10/rune on score and w120, so an
-        # absolute plant bar is usable with a -0.1 correction; the ranking is
-        # still the safer evidence. Detection POWER is hit harder -- about a
-        # factor of two in minimum detectable length, plaintext-stretch-detection.
-        train = list(fitness._training_indices())
-        for sec in ("0.3", "0.14"):
-            first = next(s.english for s in c.sentences if s.section == sec and s.english)
-            self.assertTrue(stats.find(train, c.gp.spell(first)), sec)
+    def test_frozen_model_carries_sufficient_statistics(self):
+        # The deleted prose is replaced by positive counts for every order the
+        # scorer documents and uses. Cardinalities pin that this is the full
+        # former model rather than a reduced approximation.
+        expected_cardinalities = {1: 29, 2: 712, 3: 8_649, 4: 51_075}
+        for n, cardinality in expected_cardinalities.items():
+            counts = fitness._counts(n)
+            self.assertEqual(len(counts), cardinality)
+            self.assertEqual(sum(counts.values()), fitness.training_length() - n + 1)
+
+    def test_unsupported_model_order_is_explicit(self):
+        with self.assertRaisesRegex(ValueError, "supports n=1..4"):
+            fitness.score(list(range(20)), n=5)
 
     def test_degenerate_n_and_period_are_refused(self):
         # _model(0) counts one empty gram at p=1.0, so every candidate scored

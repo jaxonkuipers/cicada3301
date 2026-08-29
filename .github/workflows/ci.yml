@@ -1,13 +1,9 @@
-# The three commands AGENTS.md tells a session to run, run on every push.
-# "On any FAIL, stop" is only a rule if something enforces it.
 name: ci
 
 on:
   push:
   pull_request:
 
-# Solver wakes push frequently. Keep only the newest result for each branch;
-# older commits remain in history but do not consume runners after replacement.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -19,17 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          # CI checks the compatibility floor. The pre-push hook already runs
-          # the same gates under the agent's current development interpreter.
           python-version: "3.11"
-
-      # First and separately: if the corpus or the parser drifted, every
-      # derived result is void and a green test suite would be misleading.
-      - name: corpus drift check
-        run: python3 -m lib.corpus
-
+      - name: corpus
+        run: python3 -m solver.corpus
       - name: tests
         run: python3 -m unittest discover -s tests
-
       - name: lint
-        run: pipx run ruff==0.15.20 check lib tools tests
+        run: pipx run ruff==0.15.20 check solver tests

@@ -1,4 +1,4 @@
-"""Regression tests for lib.corpus parsing.
+"""Regression tests for solver.corpus parsing.
 
 Every case here is pinned against the printed pages themselves; if one fails,
 the parser or the transcription changed and derived results are suspect.
@@ -7,7 +7,7 @@ Run: python3 -m unittest discover -s tests
 
 import unittest
 
-from lib import cipher, corpus, fitness, stats
+from solver import cipher, corpus, fitness, stats
 
 c = corpus.load()
 
@@ -25,7 +25,7 @@ class TestDrift(unittest.TestCase):
 
 class TestAlphabetSize(unittest.TestCase):
     def test_one_alphabet_size_everywhere(self):
-        # gp.N is derived from the table; lib.cipher and lib.stats each carry
+        # gp.N is derived from the table; solver.cipher and solver.stats each carry
         # their own literal because they never load the corpus. Nothing else
         # would notice if they drifted apart.
         self.assertEqual(c.gp.N, len(c.gp.runes))
@@ -170,7 +170,7 @@ class TestArchiveJoin(unittest.TestCase):
 
 
 class TestCommunications(unittest.TestCase):
-    """Key material, not background reading -- and read through lib.corpus so
+    """Key material, not background reading -- and read through solver.corpus so
     it stays inside the drift hash."""
 
     def test_envelope_is_stripped(self):
@@ -216,10 +216,12 @@ class TestCommunications(unittest.TestCase):
             [m.sequence for m in c.communications],
             list(range(1, corpus.EXPECTED_COMMUNICATIONS + 1)),
         )
-        self.assertEqual(c.communications[0].stage, "reddit-and-mabinogion")
-        self.assertEqual(c.communications[12].stage, "opening")
-        self.assertEqual(c.communications[18].stage, "opening")
-        self.assertEqual(c.communications[33].stage, "callback-and-onion-7")
+        self.assertEqual(c.communications[0].route, "R12.2")
+        self.assertEqual(c.communications[10].route, "R12.7")
+        self.assertEqual(c.communications[11].route, "R12.8")
+        self.assertEqual(c.communications[12].route, "R13.1")
+        self.assertEqual(c.communications[18].route, "R14.1")
+        self.assertEqual(c.communications[33].route, "R14.6")
 
     def test_signature_time_is_not_release_order(self):
         pointer = c.communication("2013-01-onion-pointer")
@@ -364,7 +366,7 @@ class CorpusCsvShape(unittest.TestCase):
 
     sections.csv rows 0.1, 0.4 and 0.13 once carried unquoted commas in `notes`
     and parsed as 13/12/12 fields against an 11-field header; the remainder was
-    silently dropped, and `lib.corpus` returned 0.13's notes ending mid-clause
+    silently dropped, and `solver.corpus` returned 0.13's notes ending mid-clause
     at "(one interrupter" -- losing the interrupter position and the four
     ordinary ciphertext F used by the solved-section calibration.
 
@@ -405,7 +407,7 @@ class SentencesCoverage(unittest.TestCase):
       to 596 runes against 672 of ciphertext -- the word square is absent there
       too. No English source in the repo covers it; it lives only in the rune
       stream.
-    * The COVERAGE invariant is not new here. `lib/corpus.py`'s
+    * The COVERAGE invariant is not new here. `solver/corpus.py`'s
       KNOWN_SENTENCE_GAPS and `verify()` already compare sentence runes to the
       stream RUNE FOR RUNE across 15 sections and assert the same 76. What this
       test adds, and the reason to keep it, is different and narrower: it spells
