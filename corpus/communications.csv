@@ -1,0 +1,38 @@
+sequence,id,round,stage,observed_at,signed_at,path,role
+1,2012-01-key-announcement,2012,reddit-and-mabinogion,2012-01-05,2012-01-05T03:46:03Z,2012/communications/2012-01-key-announcement.asc,Established the OpenPGP verification key on the subreddit
+2,2012-01-key-in-front-of-you,2012,reddit-and-mabinogion,2012-01-07,2012-01-07T10:07:51Z,2012/communications/2012-01-key-in-front-of-you.asc,Directed solvers back to the subreddit title and Mayan-number key
+3,2012-01-patience-check-back,2012,domain-countdown,2012-01-07,2012-01-07T19:45:24Z,2012/communications/2012-01-patience-check-back.asc,Time gate on 845145127.com
+4,2012-01-coordinates,2012,physical-posters,2012-01-09,2012-01-08T22:34:35Z,2012/communications/2012-01-coordinates.asc,Physical poster coordinates
+5,2012-01-twenty-nine-volumes-book-code,2012,poster-book-codes,2012-01-09,2012-01-06T20:28:30Z,2012/communications/2012-01-twenty-nine-volumes-book-code.asc,Poster-carrier code; Britannica CICADA is the leading 18/22 fit rather than a canonical source
+6,2012-01-book-code-poem,2012,poster-book-codes,2012-01-09,2012-01-07T07:53:10Z,2012/communications/2012-01-book-code-poem.asc,Poster-carrier Agrippa code to the shared enrollment onion
+7,2012-01-anonymous-email-enrollment,2012,enrollment-onion,2012-01-09,2012-01-08T23:39:04Z,2012/communications/2012-01-anonymous-email-enrollment.asc,Anonymous email enrollment instructions
+8,2012-01-location-numbers,2012,second-chance,2012-01-11,2012-01-11T05:07:59Z,2012/communications/2012-01-location-numbers.asc,Whitespace-decoded image identifiers for the poster carriers
+9,2012-01-second-chance,2012,second-chance,2012-01-11,2012-01-11T07:22:18Z,2012/communications/2012-01-second-chance.asc,Blake book code to a parallel enrollment onion
+10,2012-01-sharing-disqualification,2012,private-selection,2012-01-15,2012-01-15T12:16:52Z,2012/communications/2012-01-sharing-disqualification.asc,Removed participants who published individualized material
+11,2012-02-end-of-puzzle,2012,public-close,2012-02-06,2012-02-06T22:59:40Z,2012/communications/2012-02-end-of-puzzle.asc,Closed the first public recruitment round
+12,2012-04-necrome-denial,2012,post-round,2012-04-18,2012-04-18T17:41:42Z,2012/communications/2012-04-necrome-denial.asc,Authenticated denial unrelated to puzzle progression
+13,2013-01-opening-book-code,2013,opening,2013-01-05,2013-01-03T04:33:29Z,2013/communications/2013-01-opening-book-code.asc,Crowley book code leading to the Cicada OS image
+14,2013-01-cicada-os-message,2013,cicada-os,2013-01,2013-01-03T00:08:11Z,2013/communications/2013-01-cicada-os-message.asc,Message embedded in the bootable system
+15,2013-01-rune-table-morse,2013,music-twitter-gematria,2013-01-08,2013-01-04T03:47:31Z,2013/communications/2013-01-rune-table-morse.asc,Whitespace payload outguessed from the recovered Gematria Primus scan
+16,2013-01-telnet-hello,2013,first-onion,2013-01,2013-01-06T07:51:35Z,2013/communications/2013-01-telnet-hello.asc,Telnet response routing to the second onion
+17,2013-01-knock-on-the-sky,2013,second-onion,2013-01-14,2013-01-14T05:31:07Z,2013/communications/2013-01-knock-on-the-sky.asc,Instruction to inspect the network response rather than the web page
+18,2013-01-onion-pointer,2013,second-onion,2013-01-14,2013-01-10T17:07:15Z,2013/communications/2013-01-onion-pointer.asc,Pre-signed network payload routing to the poster-and-share stage
+19,2014-01-opening-book-code,2014,opening,2014-01-06,2014-01-06T04:59:26Z,2014/communications/2014-01-opening-book-code.asc,Self-Reliance book code to onion 1
+20,2014-01-rsa-oaep-challenge,2014,onion-1,2014-01-06,2014-01-06T07:35:27Z,2014/communications/2014-01-rsa-oaep-challenge.asc,RSA-OAEP challenge routing to onion 2
+21,2014-01-liber-primus-hash-block,2014,onion-2,2014-01-07,2014-01-07T03:16:41Z,2014/communications/2014-01-liber-primus-hash-block.asc,First of three signed XOR shares
+22,2014-01-liber-primus-hash-block-outguess-02,2014,onion-2,2014-01-07,2014-01-07T03:16:44Z,2014/communications/2014-01-liber-primus-hash-block-outguess-02.asc,Second signed XOR share recovered through OutGuess
+23,2014-01-liber-primus-hash-block-outguess-01,2014,onion-2,2014-01-07,2014-01-07T03:16:48Z,2014/communications/2014-01-liber-primus-hash-block-outguess-01.asc,Third signed XOR share recovered through OutGuess
+24,2014-01-signed-ciphertext,2014,onion-2,2014-01-07,2014-01-07T03:00:31Z,2014/communications/2014-01-signed-ciphertext.asc,Pre-signed ciphertext reconstructed by XORing the three shares
+25,2014-01-let-the-text-guide-you,2014,onion-3,2014-01-10,2014-01-10T05:42:54Z,2014/communications/2014-01-let-the-text-guide-you.asc,Runic carrier selecting the DIVINITY and WELCOME transition
+26,2014-01-fallen-behind-outguess-08,2014,onion-4,2014-01,,2014/communications/2014-01-fallen-behind-outguess-08.asc,Unsigned OutGuess payload in intro-08 pointing back to an earlier transition
+27,2014-01-interconnectedness-hex,2014,onion-5,2014-01-18,2014-01-18T01:03:57Z,2014/communications/2014-01-interconnectedness-hex.asc,Signed hexadecimal carrier for the Interconnectedness MP3
+28,2014-01-onion5-liber-primus,2014,onion-5,2014-01-19,2014-01-19T06:28:06Z,2014/communications/2014-01-onion5-liber-primus.asc,Multi-object carrier ending in the Godel Escher Bach book code to onion 6
+29,2014-01-magic-square-upload-outguess-10,2014,onion-6,2014-01-19,2014-01-19T07:39:32Z,2014/communications/2014-01-magic-square-upload-outguess-10.asc,First copy of the hidden-service and three-square instruction
+30,2014-01-magic-square-upload-outguess-11,2014,onion-6,2014-01-19,2014-01-19T07:39:42Z,2014/communications/2014-01-magic-square-upload-outguess-11.asc,Second copy of the hidden-service and three-square instruction
+31,2014-01-magic-square-upload-outguess-12,2014,onion-6,2014-01-19,2014-01-19T07:39:50Z,2014/communications/2014-01-magic-square-upload-outguess-12.asc,Third copy of the hidden-service and three-square instruction
+32,2014-01-magic-square-upload-outguess-13,2014,onion-6,2014-01-19,2014-01-19T07:39:57Z,2014/communications/2014-01-magic-square-upload-outguess-13.asc,Fourth copy of the hidden-service and three-square instruction
+33,2014-01-upload-instructions,2014,onion-6,2014-01-25,2014-01-25T08:26:57Z,2014/communications/2014-01-upload-instructions.asc,Submission form requiring the squares and a solver-operated service
+34,2014-05-onion-welcome,2014,callback-and-onion-7,2014-05-02,2014-04-02T08:49:51Z,2014/communications/2014-05-onion-welcome.asc,Pre-signed callback carrying the shared onion-7 locator
+35,2015-07-planned-parenthood-denial,post-2014,authenticated-denial,2015-07-28,2015-07-28T05:12:39Z,2015/communications/2015-07-planned-parenthood-denial.asc,Authenticated denial unrelated to puzzle progression
+36,2016-01-liber-primus,post-2014,liber-primus-reminder,2016-01-05,2016-01-01T00:01:07Z,2016/communications/2016-01-liber-primus.asc,Explicit direction back to Liber Primus
+37,2017-04-final-warning,post-2014,authentication-warning,2017-04-04,2017-04-04T23:23:28Z,2017/communications/2017-04-final-warning.asc,Final verified warning to reject unsigned paths

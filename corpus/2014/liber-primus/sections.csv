@@ -1,0 +1,16 @@
+section,first_page,first_rune,last_page,headline,headline_form,status,cipher,key,solution_file,notes
+0.0,intro-01,0,intro-01,A WARNING,english,solved,substitution,inverted gematria (i -> 28-i),solutions/0.0-a-warning.md,
+0.1,intro-03,0,intro-05,WELCOME,english,solved,polyalphabetic substitution,"DIVINITY (23,10,1,10,9,10,16,26)",solutions/0.1-welcome.md,"plaintext F passes through unencrypted and the key does not advance; runes 0-514 enciphered, 515-671 printed unencrypted (SOME WISDOM onward, incl. the 1033 word square)"
+0.2,intro-06,0,intro-09,A KOAN,english,solved,monoalphabetic substitution,"p=(28-c+3) mod 29",solutions/0.2-a-koan.md,inverted Gematria followed by shift 3
+0.3,intro-10,0,intro-13,THE LOSS OF DIVINITY,english,solved,none,,solutions/0.3-the-loss-of-divinity.md,direct Gematria Primus transliteration
+0.4,intro-14,0,intro-16,A KOAN,english,solved,polyalphabetic substitution,FIRFUMFERENFE,solutions/0.4-a-koan.md,"plaintext F passes through unencrypted and the key does not advance; runes 0-318 enciphered, 319-407 printed unencrypted (AN INSTRUCTION onward)"
+0.5,page-00,0,page-02,ᛋᚻᛖᚩᚷᛗᛡᚠ ᛋᚣᛖᛝᚳ,runic,unsolved,,,,
+0.6,page-03,0,page-07,ᛚᛄ ᛇᚻᛝᚳᚦᛏᚫᛄᛏᛉᚻ ᛏᚢᛟ,runic,unsolved,,,,
+0.7,page-08,0,page-14,ᛉᛁᛉᛗ ᚢᛉᛗᚳᚦᛈᚩᛒ,runic,unsolved,,,,ends 9 runes into page-15; the page-15 number square belongs to this tail
+0.8,page-15,9,page-22,ᛚᚢᛝᚾ ᚳᚢ ᛒᚾᛏᚠᛝ,runic,unsolved,,,,headline begins at rune 9 of page-15
+0.9,page-23,0,page-26,ᚢᚪ ᚹᛝᚷᛉᛞᚷ ᛁᛒᛁ ᛇᛏᛒᛁᚣ,runic,unsolved,,,,
+0.10,page-27,0,page-32,ᛗᛈᚣ ᛚᛋᚩᚪᚫᚻᛚᛖᛇᛁᛗᛚ ᛚᛋᚳᛈ,runic,unsolved,,,,ends 91 runes into page-33
+0.11,page-33,91,page-39,ᛝᚦᛇ ᛁᚠᚳᛟᛇ,runic,unsolved,,,,headline begins at rune 91 of page-33
+0.12,page-40,0,page-55,ᚠᚾᛗ ᚣᚷᛞᚫᚻ,runic,unsolved,,,,
+0.13,page-56,0,page-56,AN END,english,solved,polyalphabetic substitution,"p_i=(c_i-phi(q_i)) mod 29",solutions/0.13-an-end.md,"q_i is the i-th prime; plaintext F passes through unencrypted and the prime index does not advance (one interrupter, rune 56; ciphertext F at 35/47/51/74 are ordinary encryptions)"
+0.14,page-57,0,page-57,PARABLE,english,solved,none,,solutions/0.14-a-parable.md,direct Gematria Primus transliteration

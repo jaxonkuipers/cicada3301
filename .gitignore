@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+
+# Regenerable from discord/ -- python3 -m tools.build_discord_db
+discord.db
+discord.db-wal
+discord.db-shm
+discord.db.building*
+
+.ruff_cache/
+
+# Bulk attack output stays out of git; findings and scripts are committed.
+research/attacks/*/out/
+
+# Same convention at the repo root; peers write caches to ./out/.
+/out/
