@@ -15,4 +15,6 @@ Liber Primus has 75 images: the 17-page solved introduction `intro-00`–`intro-
 
 The transcription retains rune case, digits, line markers and non-rune marks. Its delimiters are `-` word, `.` clause, `&` paragraph, `$` segment, `§` chapter and `/` line. No `§` occurs in the book. A `$` closes a segment and can occur inside a section.
 
+The images, transcriptions and accepted solutions derive from `cicada-solvers/iddqd` at commit `0e3789ad2949c62ea7fb9e3e00ded93df3b3ce07`. All 75 image files match that commit byte-for-byte; the 58 body images also match the original onion-7 release with content distance 0.000 and next-best distance at least 5.77. `sentences.csv` restores the image-verified final ᛗ in sentence `0.8.0.14`; its only section-stream gap is section 0.1's 76-rune unencrypted word-list tail. `solver.corpus.verify()` checks both facts.
+
 Two solved introduction files are compound. In `intro-05.jpg`, the page is the first 336,353-byte JPEG; the remainder is ASCII hex and zero padding. In `intro-10.jpg`, the page is the first 754,662-byte JPEG; the remaining three JPEGs repeat `intro-11`, `intro-12` and `intro-13`. Decoders read the first JPEG in each file.

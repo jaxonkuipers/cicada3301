@@ -14,4 +14,4 @@
 
 Each local onion supplied a Shamir share. Any five reconstructed `p7amjopgric7dfdi.onion`, which recipient accounts describe as a signed registration page requesting a fresh anonymous webmail account and GPG key. It issued an identification number for a one-registration, timed test reportedly containing 19 epistemic, logical and programming questions and cookies named `167` and `761`. Accepted state passes to [R13.6](../R13.6/).
 
-Six share-bearing locations survive in the reconstructed route; it was described as 5-of-10, and Annapolis was reportedly found by wardialing. Original poster carriers, the signed welcome, onion wrapper, test implementation and complete questions are unavailable.
+Six share-bearing locations and one [exact five-share reconstruction](shares.txt) survive; the route was described as 5-of-10, and Annapolis was reportedly found by wardialing. Original poster carriers, the signed welcome, onion wrapper, test implementation and complete questions are unavailable.

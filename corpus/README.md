@@ -46,4 +46,4 @@ The authenticated route continues through R17.1. R14.7 is its latest public puzz
 | [`route.csv`](route.csv) | machine-readable route graph, record kind and evidence status |
 | [`communications.csv`](communications.csv) | observed and signer-asserted chronology of preserved messages |
 
-Immutable evidence under `records/*/artifacts/` and `identity/` is pinned by [`MANIFEST.sha256`](MANIFEST.sha256) and verified with `python3 -m solver.corpus_manifest verify`. Historical addresses name route objects. [`../discord.db`](../discord.db) contains retrospective Liber Primus discussion from 13 community channels spanning 2019–2026.
+Immutable evidence under `records/*/artifacts/` and `identity/` is pinned by [`MANIFEST.sha256`](MANIFEST.sha256) and verified with `python3 -m solver.corpus_manifest verify`. Historical addresses name route objects. Record a response obtained from one with its retrieval time as a current observation. [`../discord.db`](../discord.db) contains retrospective Liber Primus discussion from 13 community channels spanning 2019–2026.
