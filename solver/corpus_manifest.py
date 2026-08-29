@@ -1,9 +1,8 @@
 """Pin the bytes of preserved corpus evidence, including binary artifacts.
 
-The route map and record README files are working indexes.  Preserved identity,
-artifact and archived-source files are immutable evidence and are listed in
-``corpus/MANIFEST.sha256``.  Deliberate evidence changes must update the
-manifest explicitly::
+The route map and record README files are working indexes. Preserved identity
+and artifact files are immutable evidence listed in ``corpus/MANIFEST.sha256``.
+Deliberate evidence changes must update the manifest explicitly::
 
     python3 -m solver.corpus_manifest update
     python3 -m solver.corpus_manifest verify
@@ -39,7 +38,7 @@ def immutable_files() -> tuple[Path, ...]:
         for record in records.iterdir():
             if not record.is_dir():
                 continue
-            roots.extend((record / "artifacts", record / "sources"))
+            roots.append(record / "artifacts")
 
     files = {
         path

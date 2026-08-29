@@ -4,6 +4,6 @@ An enrolled solver reached a one-display page at their private R12.4 path. Recip
 
 Recipient reconstruction places a signed and encrypted MIDI carrier next. Notes and delta times in its first track supplied an alphabet that decoded instructions to create a GPG key for the enrolled email, upload it to the MIT keyservers, encrypt a supplied word list to Cicada, sign it with the solver's key and email the armor to the Gmail address that sent the numbers. The second track used the Blake chorus printed with the message as its known answer.
 
-The RSA measurements and MIDI readout survive in a redacted [recipient transcript](sources/recipient-transcript.md). This stage demonstrates recipient-specific ciphertext, one-display callback state, solver-generated keys and signatures, encrypted email and anti-collaboration enforcement. [R12.7](../R12.7/) separately records the public close.
+The retained measurements and readout establish recipient-specific ciphertext, one-display callback state, solver-generated keys and signatures, encrypted email and anti-collaboration enforcement. [R12.7](../R12.7/) separately records the public close.
 
 The RSA page, MIDI carrier, return packet, mailbox, server implementation and reply after the word-list submission are unavailable. A leaked February recruitment letter describes Cicada's beliefs and organization, but its public paste lacks authentication and supplies no route state.

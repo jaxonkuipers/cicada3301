@@ -9,7 +9,6 @@ f7d8e962db5f34a3e2300312c5ed150216974cae3b398fbc867b9dae727e1dab  corpus/records
 56013e89d00c5dc8a755f06da8c860c2cf20486ab1e02a5d58f134baa540f69e  corpus/records/R12.4/artifacts/communications/2012-01-coordinates.asc
 41ddfada04e66f38073e7f3e1e5b5aa862fd49089cc22abfd2efef9568d3a3d3  corpus/records/R12.4/artifacts/communications/2012-01-twenty-nine-volumes-book-code.asc
 31f5fdfe71d9de987b66a08052c016d324a05ff17e791c9a8bb227c1e64e3759  corpus/records/R12.5/artifacts/communications/2012-01-sharing-disqualification.asc
-3bb02efb33889d72f27746205ec4b8b2c1ddd22a395c7564fed8306b833c423d  corpus/records/R12.5/sources/recipient-transcript.md
 f0fd04273a57624059bc43c695e000d3c90dcede05dcc0cec4ec21c91ebf72db  corpus/records/R12.6/artifacts/communications/2012-01-location-numbers.asc
 82b49ba4fe46ac32a80382ccd49d49f29371b787bc84409378ff25e2d45729cc  corpus/records/R12.6/artifacts/communications/2012-01-second-chance.asc
 db68f6e38d5f8eab3f13cd3296465a5b562c84d581cc1121dda6ef9da9a8cb6b  corpus/records/R12.7/artifacts/communications/2012-02-end-of-puzzle.asc
@@ -22,10 +21,6 @@ a9319a47ca33729251f52bb6f163987146ba59b30746ae094c45f78107f5cbd4  corpus/records
 a617b66840fda5d2165be55101bb5be1d30122d968e375ee6608d3d2c533634c  corpus/records/R13.4/artifacts/communications/2013-01-knock-on-the-sky.asc
 13645961e2642811500677f1a08d537e3c38f8c28764229b9d93480965c1c78c  corpus/records/R13.4/artifacts/communications/2013-01-onion-pointer.asc
 58dff034fdeb23b8f7da1fcdc8542bab6411d13c410146e09b861dc9253c0bcc  corpus/records/R13.4/artifacts/communications/2013-01-telnet-hello.asc
-7dc7671582b5af7066405de794c20089ee9d31ee9bdf8d86dfd28b0553666a8f  corpus/records/R13.5/sources/retrospective-solve-record.md
-e3bccff8d102be115e5d44df04aa54a53d25b8eee4e74ff0d613fb9d1e1a3cf9  corpus/records/R13.5/sources/shamir-reconstruction.txt
-cf84c686d46b111dd8c83a05194562dbf85b7502ada3d51507dbb8d9731f4e8b  corpus/records/R13.6/sources/tcp-server-mirror.md
-4098bb5919c8c1956c0f92e06471acae6b7f3c51403a867228987930a9dab025  corpus/records/R13.6/sources/tcp-server-protocol.txt
 cba64781bd461b17039316ef97426f912aae987fde131f62e883f7f9e9f0118e  corpus/records/R14.1/artifacts/communications/2014-01-opening-book-code.asc
 65ff60bfa019e424ce2ae23994f19af5692f7e12e6bc177830b42a154985defd  corpus/records/R14.1/artifacts/communications/2014-01-rsa-oaep-challenge.asc
 da4ad19d7e46a9df54fe800bb2477914fbb7b83d34e4ea748760ce2e0902e656  corpus/records/R14.2/artifacts/communications/2014-01-liber-primus-hash-block-outguess-01.asc
@@ -42,7 +37,7 @@ e9af4acb906299e6899a6d6c851ea45e913d3ec00c1f32de43ef55258a2bea7b  corpus/records
 83835b0e148c1061d42693ea14a5035f54ad41fa45496b00b37311b8e96a2095  corpus/records/R14.6/artifacts/communications/2014-01-magic-square-upload-outguess-13.asc
 361563f8faec12359c87646593a36eaff0de93e947992e5ae4462356030b95c8  corpus/records/R14.6/artifacts/communications/2014-01-upload-instructions.asc
 d5473236dee152c7744f561e5ace95908876ec01d43467c28af1b0c1aa14cc54  corpus/records/R14.6/artifacts/communications/2014-05-onion-welcome.asc
-e0cdce6ab8f4fc6e93d231e511a39731bc68a914c85b23b7722b5491b034202f  corpus/records/R14.7/artifacts/liber-primus/README.md
+b0fd0c0fac2321aeac5b89fa465bb03649f015c7ac5e8ecabf3de87e6964e533  corpus/records/R14.7/artifacts/liber-primus/README.md
 184e6f9de8695d99435c2bef4fd7e304a8a0f704dbe04439fa8bf13c4da395a7  corpus/records/R14.7/artifacts/liber-primus/images/intro-00.jpg
 71f4bd03c692ede630091272597d2b18702184ed32fdd1977ef0ba7306632b46  corpus/records/R14.7/artifacts/liber-primus/images/intro-01.jpg
 0297572bbc2d234f84df634c6f0474011ff5df66c2ce987c3bb7aa0c635799b4  corpus/records/R14.7/artifacts/liber-primus/images/intro-02.jpg

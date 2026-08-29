@@ -29,7 +29,7 @@ Each route record joins one historical transition or signed statement to the evi
 | [R14.7](records/R14.7/) | shared onion → Liber Primus | complete public book; intended operation unresolved | reproduced |
 | [R15.1](records/R15.1/) | signed illegal-attribution denial | authenticated identity and conduct boundary | authenticated |
 | [R16.1](records/R16.1/) | signed direction to Liber Primus | words, meaning and numbers assigned authored roles | authenticated |
-| [R17.1](records/R17.1/) | signed false-path warning | OpenPGP remains the provenance boundary | authenticated |
+| [R17.1](records/R17.1/) | signed false-path warning | OpenPGP remains the authentication test | authenticated |
 
 [`route.csv`](route.csv) is the machine-readable graph; `kind` distinguishes transitions from statements and `predecessor` records the primary edge. [`communications.csv`](communications.csv) indexes observed order, signer-asserted time and the route introducing each message.
 
@@ -41,9 +41,9 @@ The authenticated route continues through R17.1. R14.7 is its latest public puzz
 
 | Path | Historical role |
 | --- | --- |
-| [`records/`](records/) | route records and the artifacts and source records they own |
+| [`records/`](records/) | route records and the artifacts they own |
 | [`identity/`](identity/) | Cicada's OpenPGP identity material |
 | [`route.csv`](route.csv) | machine-readable route graph, record kind and evidence status |
 | [`communications.csv`](communications.csv) | observed and signer-asserted chronology of preserved messages |
 
-Immutable evidence under `records/*/artifacts/`, `records/*/sources/` and `identity/` is pinned by [`MANIFEST.sha256`](MANIFEST.sha256) and verified with `python3 -m solver.corpus_manifest verify`. Historical addresses name route objects; any modern response receives modern provenance. [`../discord.db`](../discord.db) contains retrospective Liber Primus discussion from 13 community channels spanning 2019–2026.
+Immutable evidence under `records/*/artifacts/` and `identity/` is pinned by [`MANIFEST.sha256`](MANIFEST.sha256) and verified with `python3 -m solver.corpus_manifest verify`. Historical addresses name route objects. [`../discord.db`](../discord.db) contains retrospective Liber Primus discussion from 13 community channels spanning 2019–2026.

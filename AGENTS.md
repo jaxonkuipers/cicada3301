@@ -8,7 +8,7 @@ Each automation owns one causal campaign across scheduled runs. Resume its named
 
 Open that transition's record and linked primary artifacts. Record the contemporary state, causal question, live mechanisms, observations and next discriminator in `STATE.md`. Give the same state and artifacts to fresh-context subagents for independent causal constructions and observable consequences. Compare their mechanisms before choosing an operation.
 
-Give the candidate mechanisms to a separate archive-review subagent. It searches Explog for exact prior experiment coverage and, when retrospective Liber Primus discussion is relevant, searches Discord. The reviewer opens selected result or message IDs and reports dates, source type, assumptions and tested coverage. Command syntax and the reservation lifecycle live in [`research/README.md`](research/README.md).
+Give the candidate mechanisms to a separate archive-review subagent. It searches Explog for exact prior experiment coverage and, when retrospective Liber Primus discussion is relevant, searches Discord. The reviewer opens selected result or message IDs and reports dates, evidence class, assumptions and tested coverage. Command syntax and the reservation lifecycle live in [`research/README.md`](research/README.md).
 
 Select operations through artifact causality and the historical state they could recover or change. Publish a running reservation before sustained computation. Reconstruct the relevant websites, services, requests, carriers, diagrams or instruments and test coherent alternatives and controls. Continue across scheduled runs while an in-scope discriminator can answer the campaign's causal question.
 

@@ -18,6 +18,6 @@ Pinned model facts:
 - Distinct n-grams at orders 1–4: 29, 712, 8,649, 51,075
 - Compressed asset SHA-256: `14509e5d79260f7e3a48dbd53dd95ffe9844c51ab29347e79fb0b2b2e44b2c5d`
 
-The provenance and reproducibility contract for the other derived asset is in [`discord_db.md`](discord_db.md).
+`discord.db` indexes 109,917 messages from 13 Liber Primus community channels spanning 2019–2026. [`build_discord_db.py`](../cli/build_discord_db.py) recreates and checks it from the exports retained in source commit `71b0eba`.
 
 Both builders require a Git clone containing source commit `71b0eba`. A shallow clone can recover it with `git fetch --unshallow origin`; source archives require a full Git clone.

@@ -15,4 +15,4 @@ Liber Primus has 75 images: the 17-page solved introduction `intro-00`–`intro-
 
 The transcription retains rune case, digits, line markers and non-rune marks. Its delimiters are `-` word, `.` clause, `&` paragraph, `$` segment, `§` chapter and `/` line. No `§` occurs in the book. A `$` closes a segment and can occur inside a section.
 
-The 58 body images are byte-identical to the original onion-7 release. All 75 images are byte-identical to the pinned upstream archive. Two solved introduction files contain trailing or concatenated data; decoders read their first JPEG. [`PROVENANCE.md`](../../PROVENANCE.md) records the pinned source, image lineage, malformed-file structure, transcription derivation and page-assignment checks.
+Two solved introduction files are compound. In `intro-05.jpg`, the page is the first 336,353-byte JPEG; the remainder is ASCII hex and zero padding. In `intro-10.jpg`, the page is the first 754,662-byte JPEG; the remaining three JPEGs repeat `intro-11`, `intro-12` and `intro-13`. Decoders read the first JPEG in each file.

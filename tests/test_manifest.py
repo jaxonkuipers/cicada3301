@@ -15,17 +15,16 @@ class TestCorpusManifest(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
-    def test_manifest_covers_identity_artifacts_and_archived_sources_only(self):
+    def test_manifest_covers_identity_and_artifacts_only(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             corpus = root / "corpus"
             manifest = corpus / "MANIFEST.sha256"
             identity = corpus / "identity" / "key.asc"
             image = corpus / "records" / "R12.1" / "artifacts" / "final.jpg"
-            source = corpus / "records" / "R13.5" / "sources" / "transcript.txt"
             route_doc = corpus / "records" / "R12.1" / "README.md"
             route_index = corpus / "route.csv"
-            for path in (identity, image, source, route_doc, route_index):
+            for path in (identity, image, route_doc, route_index):
                 self.put(path)
 
             with mock.patch.multiple(
@@ -35,7 +34,6 @@ class TestCorpusManifest(unittest.TestCase):
                 text = manifest.read_text(encoding="utf-8")
                 self.assertIn("corpus/identity/key.asc", text)
                 self.assertIn("corpus/records/R12.1/artifacts/final.jpg", text)
-                self.assertIn("corpus/records/R13.5/sources/transcript.txt", text)
                 self.assertNotIn("README.md", text)
                 self.assertNotIn("route.csv", text)
                 self.assertEqual(corpus_manifest.verify_manifest(), [])
@@ -95,8 +93,6 @@ class TestCorpusManifest(unittest.TestCase):
             {
                 "Edit(corpus/records/**/artifacts/**)",
                 "Write(corpus/records/**/artifacts/**)",
-                "Edit(corpus/records/**/sources/**)",
-                "Write(corpus/records/**/sources/**)",
                 "Edit(corpus/identity/**)",
                 "Write(corpus/identity/**)",
             },
