@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import datetime as dt
 import json
 import os
@@ -49,6 +50,57 @@ def tokens(value: object) -> tuple[str, ...]:
 
 def normalized(value: object) -> str:
     return " ".join(tokens(value))
+
+
+def route_ids() -> frozenset[str]:
+    """Load the canonical route keys used by claims."""
+    path = ROOT / "corpus" / "route.csv"
+    try:
+        with path.open(encoding="utf-8", newline="") as source:
+            rows = list(csv.DictReader(source))
+    except OSError as exc:
+        raise ValueError(f"cannot read corpus/route.csv: {exc}") from exc
+    if not rows or "route" not in (rows[0].keys() if rows else ()):
+        raise ValueError("corpus/route.csv has no route column or rows")
+    routes = frozenset(str(row.get("route", "")).strip() for row in rows)
+    routes = frozenset(route for route in routes if route)
+    if not routes:
+        raise ValueError("corpus/route.csv contains no route ids")
+    return routes
+
+
+def validate_route(value: str) -> str | None:
+    route = value.strip()
+    if not route:
+        return "a running claim needs --route"
+    try:
+        known = route_ids()
+    except ValueError as exc:
+        return str(exc)
+    if route not in known:
+        return f"unknown route {route}; choose an id from corpus/route.csv"
+    return None
+
+
+def validated_evidence(values: list[str]) -> tuple[list[str], str | None]:
+    """Return canonical repository-relative paths for existing evidence files."""
+    paths: list[str] = []
+    root = ROOT.resolve()
+    for value in values:
+        value = value.strip()
+        if not value:
+            return [], "--evidence cannot be empty"
+        supplied = Path(value)
+        candidate = supplied if supplied.is_absolute() else ROOT / supplied
+        resolved = candidate.resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError:
+            return [], f"evidence path leaves the repository: {value}"
+        if not resolved.is_file():
+            return [], f"evidence is not an existing regular file: {value}"
+        paths.append(relative.as_posix())
+    return paths, None
 
 
 def parse_entry_id(value: str) -> int | str:
@@ -343,6 +395,10 @@ def _validate_add(args: argparse.Namespace, entries: list[dict]) -> tuple[bool, 
         if any((args.coverage, args.result, args.evidence, args.resolves)):
             print("a running claim cannot contain result fields", file=sys.stderr)
             return False, {}
+        route_error = validate_route(args.route)
+        if route_error:
+            print(route_error, file=sys.stderr)
+            return False, {}
         duplicate = next((
             entry for entry in current(entries)
             if normalized(entry.get("object")) == normalized(args.claim_object)
@@ -397,6 +453,14 @@ def _validate_add(args: argparse.Namespace, entries: list[dict]) -> tuple[bool, 
     if target_id not in active_ids:
         print(f"claim already resolved: {target_id}", file=sys.stderr)
         return False, {}
+    route_error = validate_route(str(claim.get("route", "")))
+    if route_error:
+        print(f"claim #{target_id} has invalid route: {route_error}", file=sys.stderr)
+        return False, {}
+    evidence, evidence_error = validated_evidence(args.evidence)
+    if evidence_error:
+        print(evidence_error, file=sys.stderr)
+        return False, {}
     return True, {
         "campaign": claim.get("campaign") or current_wake_id(),
         "route": claim.get("route", ""),
@@ -405,7 +469,7 @@ def _validate_add(args: argparse.Namespace, entries: list[dict]) -> tuple[bool, 
         "decision": claim.get("decision", ""),
         "coverage": args.coverage.strip(),
         "result": args.result.strip(),
-        "evidence": [value.strip() for value in args.evidence if value.strip()],
+        "evidence": evidence,
         "resolves": target_id,
     }
 

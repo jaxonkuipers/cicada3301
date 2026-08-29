@@ -1,25 +1,25 @@
-route,round,predecessor,path,status,transition
-R12.1,2012,,steps/R12.1-final-to-mabinogion-subreddit.md,reproduced,final.jpg to the Mabinogion subreddit
-R12.2,2012,R12.1,steps/R12.2-subreddit-to-telephone.md,reproduced,subreddit state to the telephone number
-R12.3,2012,R12.2,steps/R12.3-telephone-to-845145127.md,reproduced,telephone instruction to 845145127.com
-R12.4,2012,R12.3,steps/R12.4-domain-to-primary-enrollment.md,reproduced,timed domain and physical carriers to primary enrollment
-R12.5,2012,R12.4,steps/R12.5-individualized-rsa-and-midi.md,partial,individualized RSA and MIDI to signed solver return
-R12.6,2012,R12.5,steps/R12.6-second-chance-route.md,reported,reported second-chance route
-R12.7,2012,R12.5,steps/R12.7-public-close.md,authenticated,close of the first public recruitment round
-R12.8,2012,,steps/R12.8-necrome-denial.md,authenticated,denial of Necrome attribution
-R13.1,2013,,steps/R13.1-opening-to-cicada-os.md,reproduced,opening image to Cicada OS
-R13.2,2013,R13.1,steps/R13.2-iso-to-gematria-primus.md,reproduced,ISO audio and Twitter to Gematria Primus
-R13.3,2013,R13.2,steps/R13.3-gematria-to-first-onion.md,reproduced,Gematria scan to the first onion
-R13.4,2013,R13.3,steps/R13.4-interactive-onion-and-icmp.md,reproduced,interactive onion and retained ISO state to ICMP transport
-R13.5,2013,R13.4,steps/R13.5-posters-to-shamir-routing.md,partial,posters telephones and data slices to Shamir routing
-R13.6,2013,R13.5,steps/R13.6-assessment-to-return-service.md,partial,assessment to solver-operated return service
-R14.1,2014,,steps/R14.1-opening-to-rsa-carrier.md,reproduced,opening image and Emerson to an RSA carrier
-R14.2,2014,R14.1,steps/R14.2-growing-payload-and-xor-shares.md,reproduced,onion 2 growing payload and three-share composition
-R14.3,2014,R14.2,steps/R14.3-1033-square-and-divinity.md,reproduced,onion 3 and DIVINITY to onion 4
-R14.4,2014,R14.3,steps/R14.4-koan-and-route-grid.md,reproduced,onion 4 koan and route grid
-R14.5,2014,R14.4,steps/R14.5-interconnectedness-and-geb.md,reproduced,Interconnectedness and the GEB book code
-R14.6,2014,R14.5,steps/R14.6-square-submission-and-callback.md,partial,magic-square submission and recipient-operated callback
-R14.7,2014,R14.6,steps/R14.7-liber-primus-delivery.md,reproduced,shared onion-7 delivery and Liber Primus
-R15.1,2015,,steps/R15.1-illegal-attribution-denial.md,authenticated,denial of illegal attribution
-R16.1,2016,R14.7,steps/R16.1-liber-primus-direction.md,authenticated,explicit direction to Liber Primus
-R17.1,2017,R16.1,steps/R17.1-authentication-warning.md,authenticated,final authenticated warning
+route,round,predecessor,path,status,kind,description
+R12.1,2012,,records/R12.1/README.md,reproduced,transition,final.jpg to the Mabinogion subreddit
+R12.2,2012,R12.1,records/R12.2/README.md,reproduced,transition,subreddit state to the telephone number
+R12.3,2012,R12.2,records/R12.3/README.md,reproduced,transition,telephone instruction to 845145127.com
+R12.4,2012,R12.3,records/R12.4/README.md,reproduced,transition,timed domain and physical carriers to primary enrollment
+R12.5,2012,R12.4,records/R12.5/README.md,partial,transition,individualized RSA and MIDI to signed solver return
+R12.6,2012,R12.5,records/R12.6/README.md,reported,transition,reported second-chance route
+R12.7,2012,R12.5,records/R12.7/README.md,authenticated,transition,close of the first public recruitment round
+R12.8,2012,,records/R12.8/README.md,authenticated,statement,denial of Necrome attribution
+R13.1,2013,,records/R13.1/README.md,reproduced,transition,opening image to Cicada OS
+R13.2,2013,R13.1,records/R13.2/README.md,reproduced,transition,ISO audio and Twitter to Gematria Primus
+R13.3,2013,R13.2,records/R13.3/README.md,reproduced,transition,Gematria scan to the first onion
+R13.4,2013,R13.3,records/R13.4/README.md,reproduced,transition,interactive onion and retained ISO state to ICMP transport
+R13.5,2013,R13.4,records/R13.5/README.md,partial,transition,posters telephones and data slices to Shamir routing
+R13.6,2013,R13.5,records/R13.6/README.md,partial,transition,assessment to solver-operated return service
+R14.1,2014,,records/R14.1/README.md,reproduced,transition,opening image and Emerson to an RSA carrier
+R14.2,2014,R14.1,records/R14.2/README.md,reproduced,transition,onion 2 growing payload and three-share composition
+R14.3,2014,R14.2,records/R14.3/README.md,reproduced,transition,onion 3 and DIVINITY to onion 4
+R14.4,2014,R14.3,records/R14.4/README.md,reproduced,transition,onion 4 koan and route grid
+R14.5,2014,R14.4,records/R14.5/README.md,reproduced,transition,Interconnectedness and the GEB book code
+R14.6,2014,R14.5,records/R14.6/README.md,partial,transition,magic-square submission and recipient-operated callback
+R14.7,2014,R14.6,records/R14.7/README.md,reproduced,transition,shared onion-7 delivery and Liber Primus
+R15.1,2015,,records/R15.1/README.md,authenticated,statement,denial of illegal attribution
+R16.1,2016,R14.7,records/R16.1/README.md,authenticated,transition,explicit direction to Liber Primus
+R17.1,2017,R16.1,records/R17.1/README.md,authenticated,statement,final authenticated warning

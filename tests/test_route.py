@@ -8,7 +8,7 @@ from pathlib import Path
 from solver.paths import CORPUS
 
 ROUTE_ID = re.compile(r"^R\d{2}\.\d+$")
-STEP_FIELDS = (
+TRANSITION_FIELDS = (
     "**Solver state.**",
     "**Dependencies consumed.**",
     "**Artifact and action.**",
@@ -16,6 +16,13 @@ STEP_FIELDS = (
     "**State handed forward.**",
     "**Evidence.**",
     "**Later evidence.**",
+    "**Preservation boundary.**",
+)
+STATEMENT_FIELDS = (
+    "**Context.**",
+    "**Signed statement.**",
+    "**Operational effect.**",
+    "**Evidence.**",
     "**Preservation boundary.**",
 )
 
@@ -32,6 +39,13 @@ class RouteIntegrity(unittest.TestCase):
         cls.route_ids = {row["route"] for row in cls.route_rows}
 
     def test_route_ids_paths_and_predecessors_are_canonical(self):
+        self.assertEqual(
+            set(self.route_rows[0]),
+            {
+                "route", "round", "predecessor", "path", "status", "kind",
+                "description",
+            },
+        )
         ids = [row["route"] for row in self.route_rows]
         paths = [row["path"] for row in self.route_rows]
         self.assertEqual(len(ids), len(set(ids)))
@@ -39,6 +53,8 @@ class RouteIntegrity(unittest.TestCase):
         self.assertTrue(all(ROUTE_ID.fullmatch(route) for route in ids))
         for row in self.route_rows:
             self.assertIn(row["status"], {"authenticated", "reproduced", "reported", "partial"})
+            self.assertIn(row["kind"], {"transition", "statement"})
+            self.assertTrue(row["description"])
             if row["predecessor"]:
                 self.assertIn(row["predecessor"], self.route_ids)
                 self.assertNotEqual(row["predecessor"], row["route"])
@@ -52,18 +68,27 @@ class RouteIntegrity(unittest.TestCase):
                 self.assertIn(predecessor, seen, (row["route"], predecessor))
             seen.add(row["route"])
 
-    def test_every_step_has_the_state_handoff_fields(self):
+    def test_every_record_uses_its_kind_schema(self):
         indexed = {CORPUS / row["path"] for row in self.route_rows}
-        present = set((CORPUS / "steps").glob("R*.md"))
+        present = set((CORPUS / "records").glob("R*/README.md"))
         self.assertEqual(present, indexed)
         route_map = (CORPUS / "README.md").read_text(encoding="utf-8")
         for row in self.route_rows:
             path = CORPUS / row["path"]
             text = path.read_text(encoding="utf-8")
             self.assertTrue(text.startswith(f"# {row['route']}"), path)
-            for field in STEP_FIELDS:
+            fields = TRANSITION_FIELDS if row["kind"] == "transition" else STATEMENT_FIELDS
+            forbidden = (
+                STATEMENT_FIELDS[:3]
+                if row["kind"] == "transition"
+                else TRANSITION_FIELDS[:5]
+            )
+            for field in fields:
                 self.assertIn(field, text, f"{path}: {field}")
-            self.assertIn(f"[{row['route']}]({row['path']})", route_map)
+            for field in forbidden:
+                self.assertNotIn(field, text, f"{path}: unexpected {field}")
+            record_link = Path(row["path"]).parent.as_posix() + "/"
+            self.assertIn(f"[{row['route']}]({record_link})", route_map)
 
     def test_communications_use_route_ids_and_existing_artifacts(self):
         communications = rows(CORPUS / "communications.csv")
@@ -80,7 +105,7 @@ class RouteIntegrity(unittest.TestCase):
             self.assertTrue((CORPUS / row["path"]).is_file(), row["path"])
 
     def test_route_markdown_links_resolve(self):
-        documents = [CORPUS / "README.md", *(CORPUS / "steps").glob("*.md")]
+        documents = list(CORPUS.rglob("*.md"))
         for document in documents:
             text = document.read_text(encoding="utf-8")
             for target in re.findall(r"\[[^]]*\]\(([^)]+)\)", text):

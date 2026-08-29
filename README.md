@@ -4,7 +4,7 @@ This repository reconstructs the authenticated 2012–2017 Cicada 3301 route and
 
 | Path | Purpose |
 | --- | --- |
-| [`corpus/`](corpus/) | compact route map, one historical step per transition, primary artifacts and indexes |
+| [`corpus/`](corpus/) | compact route map, route-owned transition and statement records, primary artifacts and indexes |
 | [`solver/`](solver/) | corpus access, rune and cipher operations, scoring, reusable instruments and command-line tools |
 | [`research/`](research/) | active campaigns, cross-campaign conclusions and the experiment ledger |
 | [`tests/`](tests/) | corpus, solver, route and coordination invariants |

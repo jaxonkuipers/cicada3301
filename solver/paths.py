@@ -11,13 +11,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 CORPUS = ROOT / "corpus"
-PUZZLE_2012 = CORPUS / "2012"
-PUZZLE_2013 = CORPUS / "2013"
-PUZZLE_2014 = CORPUS / "2014"
+RECORDS = CORPUS / "records"
 
-MABINOGION = PUZZLE_2012 / "mabinogion"
-GEMATRIA_PRIMUS = PUZZLE_2013 / "gematria-primus"
-LP = PUZZLE_2014 / "liber-primus"
+MABINOGION = RECORDS / "R12.2" / "artifacts" / "mabinogion"
+GEMATRIA_PRIMUS = RECORDS / "R13.2" / "artifacts" / "gematria-primus"
+LP = RECORDS / "R14.7" / "artifacts" / "liber-primus"
 COMMUNICATIONS_INDEX = CORPUS / "communications.csv"
 CICADA_PUBLIC_KEY = CORPUS / "identity" / "cicada-3301-public-key.asc"
 

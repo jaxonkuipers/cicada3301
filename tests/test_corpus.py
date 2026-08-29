@@ -242,13 +242,14 @@ class TestCommunications(unittest.TestCase):
         for old, canonical in aliases.items():
             self.assertEqual(c.communication(old).id, canonical)
 
-    def test_round_paths_and_identity_are_separate(self):
+    def test_route_owned_paths_and_identity_are_separate(self):
         for message in c.communications:
             self.assertTrue(message.path.is_file())
             self.assertEqual(message.id, message.path.stem)
-            self.assertEqual(message.path.relative_to(corpus.CORPUS).parts[0],
-                             message.round if message.round != "post-2014"
-                             else message.observed_at[:4])
+            self.assertEqual(
+                message.path.relative_to(corpus.CORPUS).parts[:4],
+                ("records", message.route, "artifacts", "communications"),
+            )
         self.assertNotIn("cicada-3301-public-key",
                          {message.id for message in c.communications})
         self.assertIn("BEGIN PGP PUBLIC KEY BLOCK", c.public_key)

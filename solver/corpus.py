@@ -1,8 +1,8 @@
-"""The single read path for corpus/.
+"""The single semantic read path for corpus/.
 
-Nothing outside this module may parse corpus/ directly. If the transcription,
-the gematria table, or the page/section index needs interpreting differently,
-change it here where everyone sees it -- not in a private copy.
+Integrity tooling may hash corpus bytes without interpreting them. If the
+transcription, the gematria table, or the page/section index needs interpreting
+differently, change it here where everyone sees it -- not in a private copy.
 
     from solver import corpus
     c = corpus.load()
@@ -23,6 +23,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from solver import corpus_manifest
 from solver.paths import (
     CICADA_PUBLIC_KEY,
     COMMUNICATIONS_INDEX,
@@ -31,7 +32,7 @@ from solver.paths import (
     LP,
 )
 
-# Upstream's transcription marks, from corpus/2014/liber-primus/README.md.
+# Upstream's transcription marks, from the R14.7 Liber Primus artifact README.
 WORD, CLAUSE, PARAGRAPH, SEGMENT, CHAPTER, LINE = "-", ".", "&", "$", "§", "/"
 MARKS = frozenset({WORD, CLAUSE, PARAGRAPH, SEGMENT, CHAPTER, LINE})
 
@@ -39,7 +40,7 @@ MARKS = frozenset({WORD, CLAUSE, PARAGRAPH, SEGMENT, CHAPTER, LINE})
 # what you want when recognising rune text written by hand somewhere else.
 RUNIC_FIRST, RUNIC_LAST = "ᚠ", "᛿"
 
-# Sections 0.5 through 0.12 -- everything Cicada has never let be read.
+# Sections 0.5 through 0.12 are unresolved in sections.csv.
 UNSOLVED_SECTIONS = ("0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "0.11", "0.12")
 
 
@@ -56,7 +57,7 @@ def is_rune(ch: str) -> bool:
 # attested CWESTIAN); this entry is the fallback for a bare Q, which the
 # book never prints, and routes it through C/K's rune. Everything else --
 # U/V, C/K, S/Z, NG/ING, IA/IO -- comes from the transliteration column
-# of corpus/2013/gematria-primus/table.csv.
+# of corpus/records/R13.2/artifacts/gematria-primus/table.csv.
 _EXTRA_SPELLINGS = {"Q": 5}
 
 
@@ -70,7 +71,7 @@ class GematriaPrimus:
 
     @property
     def N(self) -> int:
-        """Alphabet size, from the table rather than from a literal.
+        """Alphabet size loaded from the canonical table.
 
         `solver.cipher` and `solver.stats` each carry their own `N = 29` because
         they never load the corpus; tests/test_corpus.py pins all three to
@@ -330,8 +331,8 @@ class RuneText:
 
     @staticmethod
     def concat(parts: Iterable[RuneText]) -> RuneText:
-        # A part with no runes can still carry content: page-50 is a full page
-        # of base-60 groups and not a single rune. Its `other` hangs off the
+        # A part with zero runes can still carry content: page-50 is a full page
+        # of base-60 groups. Its `other` hangs off the
         # last rune of the preceding part; anchor -1 makes that `i + off - 1`.
         parts = [p for p in parts if len(p) or p.other or p.leading_marks]
         if not parts:
@@ -527,14 +528,7 @@ class Section:
         return own
 
     def channels(self) -> list[str]:
-        """The archive channels discussing this section's pages.
-
-        Every unsolved section maps to exactly one, named after the
-        illustration: 0.8 -> '15-22' (mobius, 3,485 messages). The join lives
-        in pages.csv and is the whole reason to claim a section rather than
-        `all` -- `all` names no channel and cuts the work off from everything
-        the community already established about those pages.
-        """
+        """Archive channel labels associated with this section's pages."""
         seen = {self._corpus.discord_channel(p.id) for p in self.pages()}
         return sorted(x for x in seen if x)
 
@@ -551,13 +545,11 @@ class Section:
 class Communication:
     """One Cicada message in public-puzzle order.
 
-    The path layout records the round in which the bytes appeared, while
-    communications.csv records release order separately from signature time.
-    This matters for pre-signed objects such as 2013's onion pointer and for
-    the April-signed locator delivered through a solver's service in May 2014.
-
-    Read them through here rather than opening the files: an ad-hoc read sits
-    outside corpus_sha256 and drifts silently.
+    communications.csv records route ownership, round and observed order
+    separately from signature time. This preserves pre-signed objects such as
+    2013's onion pointer and the April-signed locator delivered in May 2014.
+    This loader normalizes signed bodies and includes the source files in
+    corpus_sha256.
     """
 
     id: str
@@ -682,7 +674,7 @@ class Corpus:
 
     @functools.cached_property
     def public_key(self) -> str:
-        """The armored 3301 public key, identity material rather than a message."""
+        """The armored 3301 public key stored as identity material."""
         return CICADA_PUBLIC_KEY.read_text(encoding="utf-8")
 
     def communication(self, comm_id: str) -> Communication:
@@ -702,7 +694,7 @@ class Corpus:
                 route="identity",
                 observed_at="2012-01-05",
                 signed_at="",
-                role="OpenPGP identity key; not a communication",
+                role="OpenPGP identity key",
                 path=CICADA_PUBLIC_KEY,
                 date="2012-01",
                 body=self.public_key.strip("\n"),
@@ -740,7 +732,7 @@ class Corpus:
 
     @functools.cached_property
     def unsolved(self) -> RuneText:
-        """Sections 0.5-0.12 in book order -- the 12,956 runes nobody has read."""
+        """The 12,956 indexed unresolved runes in sections 0.5-0.12."""
         return RuneText.concat([s.text() for s in self.unsolved_sections()])
 
     def discord_channel(self, page_id: str) -> str:
@@ -791,7 +783,9 @@ EXPECTED_UNSOLVED_SHA = (
 # the communication index and the public key because the loader reads them.
 # 2026-08-29: communications.csv replaced its descriptive stage labels with
 # canonical route ids. Artifact bytes and the LP rune stream are unchanged.
-EXPECTED_CORPUS_SHA = "c1e256fd548ba66c8a05f3b8b032df2898ac87addae0a173475f0b418d20065b"
+# 2026-08-29: corpus evidence moved under its owning route records. The hash
+# changed because it includes canonical paths; the evidence bytes are unchanged.
+EXPECTED_CORPUS_SHA = "6952f734dfa69924c7abf75822ca9ac7c38d5cdd5725f6ef47bfa6a6e0159295"
 
 # Exact counts of solved sentences with English, split by how they are checked.
 # Pinning them keeps the speller check from passing vacuously when
@@ -820,15 +814,13 @@ EXPECTED_COMMUNICATIONS = 37
 # first version of the reader did exactly that and lost it silently.
 EXPECTED_MORSE_CHARS = 558
 
-# Sections whose sentences deliberately do not cover the whole rune stream.
+# Sections whose sentences deliberately cover part of the rune stream.
 # 0.1: the last 76 runes are the unencrypted 1033 word square (intro-05), which
-# upstream's sentence segmentation never included. NOT "a word list with page
-# numbers" -- intro-05 prints no page numbers, only the twelve number cells of
-# the square interleaved with its thirteen word cells.
+# upstream's sentence segmentation omitted. Intro-05 prints the square's twelve
+# number cells interleaved with its thirteen word cells.
 KNOWN_SENTENCE_GAPS = {"0.1": 76}
 
-# Sections whose cipher inverts in one line, so the speller and the headline
-# can be checked rune for rune rather than only on length.
+# Sections whose one-line inverse supports rune-exact speller and headline checks.
 _INVERTIBLE = {
     "0.0": lambda i: 28 - i,
     "0.2": lambda i: (28 - i + 3) % 29,
@@ -981,13 +973,13 @@ def _check_sentences_match_transcription(c: Corpus) -> tuple[str, bool, str]:
 def verify() -> list[tuple[str, bool, str]]:
     """Cheap checks that the data and the speller still behave.
 
-    Returns (name, passed, detail). Costs well under a second -- run it at the
-    start of a session, not as a ceremony.
+    Returns (name, passed, detail) and costs well under a second.
     """
     c = load()
     u = c.unsolved
     sha = u.sha256()
     files_sha = corpus_sha256()
+    manifest_errors = corpus_manifest.verify_manifest()
     other_chars = sum(
         len(s) for p in c.pages if p.transcription for _, s in p.text().other
     )
@@ -995,6 +987,13 @@ def verify() -> list[tuple[str, bool, str]]:
     return [
         ("corpus files sha256", files_sha == EXPECTED_CORPUS_SHA,
          files_sha[:16] + "..."),
+        (
+            "immutable evidence manifest",
+            not manifest_errors,
+            manifest_errors[0]
+            if manifest_errors
+            else f"{len(corpus_manifest.immutable_files())} files verified",
+        ),
         # UNSOLVED_SECTIONS drives `c.unsolved`, and the status column drives
         # everything a human reads. If a section is ever solved, both must
         # move together or the 12,956-rune stream silently keeps it.
@@ -1038,9 +1037,9 @@ def main() -> int:
     # scans hold marks the transcription has no field for (colour, drawings,
     # glyph size). PASS means "unchanged since it was pinned", not "correct".
     print(
-        "\n  These check the corpus against itself: PASS means nothing has "
-        "drifted,\n  not that the transcription matches the scans in "
-        "corpus/2014/liber-primus/images/."
+        "\n  These checks verify internal corpus consistency. The source scans for "
+        "\n  image-to-transcription validation are in "
+        "corpus/records/R14.7/artifacts/liber-primus/images/."
     )
     return 0 if ok else 1
 

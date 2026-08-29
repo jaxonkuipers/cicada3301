@@ -2,7 +2,13 @@
   "permissions": {
     "defaultMode": "bypassPermissions",
     "deny": [
-      "Bash(git push --force*)"
+      "Bash(git push --force*)",
+      "Edit(corpus/records/**/artifacts/**)",
+      "Write(corpus/records/**/artifacts/**)",
+      "Edit(corpus/records/**/sources/**)",
+      "Write(corpus/records/**/sources/**)",
+      "Edit(corpus/identity/**)",
+      "Write(corpus/identity/**)"
     ]
   }
 }

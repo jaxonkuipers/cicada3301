@@ -1,6 +1,6 @@
 """Typed apostrophes must agree between the two transcription records.
 
-`corpus/2014/liber-primus/transcription/*.txt` and `sentences.csv` both carry the
+The R14.7 `artifacts/liber-primus/transcription/*.txt` files and `sentences.csv` both carry the
 typed apostrophes of the book, while the drift check compares rune-index
 streams that strip `'`. This pins agreement in both directions, by section
 offset, for every section that has sentence rows.

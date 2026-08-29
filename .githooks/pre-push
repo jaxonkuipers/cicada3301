@@ -5,9 +5,36 @@ set -eu
 zero=0000000000000000000000000000000000000000
 repo_root=$(git rev-parse --show-toplevel)
 
+guard_corpus_evidence() {
+    local_sha=$1
+    remote_sha=$2
+    comparison=$remote_sha
+    if [ "$comparison" = "$zero" ] || ! git -C "$repo_root" cat-file -e "$comparison^{commit}"; then
+        comparison=$(git -C "$repo_root" merge-base origin/main "$local_sha" 2>/dev/null || true)
+    fi
+    if [ -n "$comparison" ]; then
+        changed=$(git -C "$repo_root" diff --name-only "$comparison" "$local_sha" -- \
+            ':(glob)corpus/identity/**' \
+            ':(glob)corpus/records/*/artifacts/**' \
+            ':(glob)corpus/records/*/sources/**')
+    else
+        changed=$(git -C "$repo_root" ls-tree -r --name-only "$local_sha" -- \
+            ':(glob)corpus/identity/**' \
+            ':(glob)corpus/records/*/artifacts/**' \
+            ':(glob)corpus/records/*/sources/**')
+    fi
+    if [ -n "$changed" ] && [ "${CICADA_CORPUS_MAINTENANCE:-}" != "1" ]; then
+        echo "pre-push: immutable corpus evidence changed:" >&2
+        echo "$changed" | sed -n '1,12p' >&2
+        echo "pre-push: authorized corpus maintenance sets CICADA_CORPUS_MAINTENANCE=1" >&2
+        return 1
+    fi
+}
+
 validate_commit() {
     local_sha=$1
     remote_sha=$2
+    guard_corpus_evidence "$local_sha" "$remote_sha"
     scratch=$(mktemp -d "${TMPDIR:-/tmp}/cicada-pre-push.XXXXXX")
     checkout=$scratch/tree
 

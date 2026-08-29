@@ -19,6 +19,13 @@ class TestExplog(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "research").mkdir()
+            (root / "corpus").mkdir()
+            (root / "corpus" / "route.csv").write_text(
+                "route,round\nR12.1,2012\nR14.7,2014\n", encoding="utf-8",
+            )
+            evidence = root / "research" / "campaigns" / "test" / "FINDINGS.md"
+            evidence.parent.mkdir(parents=True)
+            evidence.write_text("findings\n", encoding="utf-8")
             path = root / "research" / "local.jsonl"
             with mock.patch.multiple(explog, LOG=path, ROOT=root):
                 yield path
@@ -65,6 +72,22 @@ class TestExplog(unittest.TestCase):
             self.assertIn("result fields", error)
             self.assertEqual(path.read_text(), "")
 
+    def test_running_claim_requires_a_canonical_route(self):
+        with self.log() as path:
+            args = self.running()
+            route = args.index("--route")
+            del args[route:route + 2]
+            code, _, error = self.call(args)
+            self.assertEqual(code, 2)
+            self.assertIn("needs --route", error)
+
+            args = self.running()
+            args[args.index("--route") + 1] = "R14.8"
+            code, _, error = self.call(args)
+            self.assertEqual(code, 2)
+            self.assertIn("unknown route R14.8", error)
+            self.assertEqual(path.read_text(), "")
+
     def test_result_requires_live_claim_exact_coverage_and_result(self):
         with self.log():
             self.assertEqual(self.call(self.running())[0], 0)
@@ -105,6 +128,27 @@ class TestExplog(unittest.TestCase):
             self.assertEqual(result["evidence"], ["research/campaigns/test/FINDINGS.md"])
             _, output, _ = self.call(["running"])
             self.assertEqual(output, "no entries\n")
+
+    def test_result_evidence_must_be_a_file_inside_the_repository(self):
+        with self.log() as path:
+            root = path.parents[1]
+            self.assertEqual(self.call(self.running())[0], 0)
+            code, _, error = self.close(evidence="research/missing.md")
+            self.assertEqual(code, 2)
+            self.assertIn("not an existing regular file", error)
+            code, _, error = self.close(evidence="research/campaigns/test")
+            self.assertEqual(code, 2)
+            self.assertIn("not an existing regular file", error)
+            code, _, error = self.close(evidence="../outside.txt")
+            self.assertEqual(code, 2)
+            self.assertIn("leaves the repository", error)
+
+            absolute = root / "research" / "campaigns" / "test" / "FINDINGS.md"
+            self.assertEqual(self.close(evidence=str(absolute))[0], 0)
+            result = json.loads(path.read_text().splitlines()[-1])
+            self.assertEqual(
+                result["evidence"], ["research/campaigns/test/FINDINGS.md"],
+            )
 
     def test_duplicate_active_operation_is_rejected(self):
         with self.log():
@@ -208,6 +252,10 @@ class TestExplog(unittest.TestCase):
             root = Path(temporary)
             shards = root / "research" / "explog"
             shards.parent.mkdir()
+            (root / "corpus").mkdir()
+            (root / "corpus" / "route.csv").write_text(
+                "route,round\nR14.7,2014\n", encoding="utf-8",
+            )
             with mock.patch.multiple(
                 explog, ROOT=root, LOG=shards, SHARD_DIR=shards,
             ), mock.patch.dict(os.environ, {"CICADA_WAKE_ID": "test-wake"}):

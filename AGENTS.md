@@ -6,7 +6,7 @@ Recover Cicada 3301's intended unresolved result from the preserved public route
 
 1. A scheduled automation owns one causal campaign across runs. Resume its named worktree and synchronize it with `origin/main` while preserving campaign state. For a new campaign, create a current worktree with `python3 -m solver.cli.worktree create NAME` and continue from the printed path.
 2. Inspect `python3 -m solver.cli.explog running` and the route map in `corpus/README.md`. Choose a provenance-supported preserved transition and a causal question outside the exact operations already reserved.
-3. Open that transition under `corpus/steps/` and its linked primary artifacts. Write the contemporary solver state, causal question, live mechanisms, observations and next discriminator in `research/campaigns/<name>/STATE.md`.
+3. Open that transition under `corpus/records/` and its linked primary artifacts. Write the contemporary solver state, causal question, live mechanisms, observations and next discriminator in `research/campaigns/<name>/STATE.md`.
 4. Give fresh-context subagents the selected state and artifacts. Ask each for an independent causal construction and its observable consequences. The campaign owner compares and synthesizes their mechanisms.
 5. Give those mechanisms to a separate fresh-context archive reviewer. The reviewer runs several short Explog queries, opens relevant result ids, and reports exact prior coverage and tested assumptions. For retrospective Liber Primus community evidence, the reviewer also queries the 2019–2026 Discord archive, opens selected message ids, and reports the dates and source type:
 
@@ -50,9 +50,9 @@ Use local files and publicly accessible sources. Never initiate authentication, 
 
 ## Keep durable state compact
 
-`corpus/README.md` is the route map; each `corpus/steps/` file supplies one transition's state and primary evidence. `research/SETTLED.md` holds constraints used by several campaigns. `discord.db` preserves a 2019–2026 retrospective Liber Primus community archive. Explog stores active locks and exact experiment results.
+`corpus/README.md` is the route map; each `corpus/records/` directory supplies one transition or signed statement and the evidence it owns. `research/SETTLED.md` holds constraints used by several campaigns. `discord.db` preserves a 2019–2026 retrospective Liber Primus community archive. Explog stores active locks and exact experiment results.
 
-A campaign directory contains `STATE.md`, concise `FINDINGS.md`, reusable scripts and gitignored `out/`. At every boundary, replace `STATE.md` with the current contemporary state and artifacts, causal question, live mechanisms, observations and implications, and next discriminator. Put resolved mechanisms and supporting evidence in `FINDINGS.md`. Add a conclusion to `research/SETTLED.md` when several campaigns need it. Update a corpus step when chronology or preservation evidence changes.
+A campaign directory contains `STATE.md`, concise `FINDINGS.md`, reusable scripts and gitignored `out/`. At every boundary, replace `STATE.md` with the current contemporary state and artifacts, causal question, live mechanisms, observations and implications, and next discriminator. Put resolved mechanisms and supporting evidence in `FINDINGS.md`. Add a conclusion to `research/SETTLED.md` when several campaigns need it. Update a corpus record when chronology or preservation evidence changes.
 
 Give a positive result to a fresh-context reviewer with its claim, evidence and archive tools. Incorporate its prior-art, post-selection, instrument and cheaper-alternative objections before promoting the result.
 
