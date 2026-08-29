@@ -11,7 +11,7 @@ Goal: recover Cicada 3301's intended unresolved result from the full authenticat
 5. Choose among the surviving mechanisms by artifact causality and by the state their ordinary outcomes recover or change. Archive coverage removes exact duplication and bounds the meaning of prior results. Before writing a custom instrument or starting sustained computation, add and commit a compact `running` claim naming the canonical object, exact operation and the decision its outcomes inform. Publish committed checkpoints with `python3 -m tools.worktree publish`.
 6. Investigate through reasoning, reconstruction, emulation and coherent tests. Build the websites, services, requests, carriers, diagrams or small tools that make the mechanism concrete. Carry the causal question through related observations and pivots across scheduled runs. At each scheduled boundary, preserve the contemporary state, live mechanisms, observations and next discriminator; the next run resumes there. Close the campaign when it recovers intended state, answers its causal question for another campaign to consume or reaches an exact evidential blocker.
 
-Build `discord.db` when the archive reviewer reports a missing or stale index.
+`discord.db` is preserved primary data. Query it through Dsearch.
 
 ## Work from the historical state
 

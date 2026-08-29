@@ -25,6 +25,5 @@ CICADA_PUBLIC_KEY = CORPUS / "identity" / "cicada-3301-public-key.asc"
 # (that is corpus/) and not derived analysis (that is research/).
 REFERENCE = ROOT / "reference"
 
-DISCORD = ROOT / "discord"
-# Regenerable. Delete it and rerun `python3 -m tools.build_discord_db`.
+# Preserved primary data: the source exports cannot be reacquired.
 DISCORD_DB = ROOT / "discord.db"

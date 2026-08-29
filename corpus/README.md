@@ -14,4 +14,4 @@ Start with the root [`HISTORY.md`](../HISTORY.md). It reconstructs the 2012, 201
 
 The corpus is intentionally incomplete as a carrier archive. Missing original images, audio, live services, and individualized material are called out in the history rather than silently implied to exist here. A file's presence does not by itself establish attribution; signature and source provenance are recorded in the relevant findings.
 
-Community theories, proposed cribs, abandoned attempts, and disputed claims belong in the raw [`../discord/`](../discord/) exports or a research run, not in canonical corpus data.
+Community theories, proposed cribs, abandoned attempts, and disputed claims are searchable in [`../discord.db`](../discord.db) or belong in a research run.

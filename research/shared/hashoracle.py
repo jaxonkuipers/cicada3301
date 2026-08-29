@@ -61,7 +61,7 @@ from research.shared import hashes512
 # in January 2014, so original Keccak is the period-correct function. Both are
 # carried, separately named.
 #
-# The community's own tool tried 18 (`discord/deep-web-hash.txt:62014`). The
+# The community's own tool tried 18 (`discord.db` message 53158). The
 # nine still missing -- JH, Skein, Grostl, CubeHash, Streebog-512, MD6-512, LSH,
 # Whirlpool-0, Whirlpool-T -- each need a constant table that cannot be derived
 # from the spec, so no gate here would catch a transcription slip. Left out on

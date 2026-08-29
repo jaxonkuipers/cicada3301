@@ -14,28 +14,22 @@ from pathlib import Path
 from unittest import mock
 
 from lib import runes
-from tools import build_discord_db as bdb
 from tools import dsearch, explog, worktree
 
-EXPORT = """\
-Guild: CicadaSolvers
-Channel: Liber-Primus / 54-55-jpg
-
-[3/14/2021 9:05 AM] alice
-first message
-
-[3/14/2021 9:06 AM] bob (pinned)
-runes ᚠᚢᚦᚩᚱᚳ here
-second line
-
-[3/14/2021 9:07 AM] carol
-indices 19, 21, 23, 27 and a matrix
-1 0 0
-0 -1 0
-
-[3/14/2021 9:08 AM] dave
-{Attachments}
-https://example.invalid/a.png
+DB_SCHEMA = """
+CREATE TABLE messages (
+    id INTEGER PRIMARY KEY, channel TEXT NOT NULL, channel_name TEXT NOT NULL,
+    ts TEXT NOT NULL, author TEXT NOT NULL, pinned INTEGER NOT NULL,
+    body TEXT NOT NULL, extra TEXT NOT NULL, seq INTEGER NOT NULL,
+    line INTEGER NOT NULL
+);
+CREATE INDEX msg_channel_seq ON messages(channel, seq);
+CREATE VIRTUAL TABLE msg_fts USING fts5(body, tokenize='unicode61');
+CREATE TABLE runes (
+    id INTEGER PRIMARY KEY, msg_id INTEGER NOT NULL, notation TEXT NOT NULL,
+    raw TEXT NOT NULL, canon TEXT NOT NULL, n INTEGER NOT NULL
+);
+CREATE VIRTUAL TABLE rune_fts USING fts5(canon, tokenize='trigram');
 """
 
 RUNNING = [
@@ -46,21 +40,43 @@ RUNNING = [
 
 
 @contextlib.contextmanager
-def archive(text=EXPORT, name="54-55.txt"):
+def archive(needle_count=0):
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        exports = root / "discord"
         database = root / "discord.db"
-        exports.mkdir()
-        (exports / name).write_text(text, encoding="utf-8")
-        with (
-            mock.patch.multiple(bdb, DISCORD=exports, DISCORD_DB=database, ROOT=root),
-            mock.patch.multiple(
-                dsearch, DISCORD=exports, DISCORD_DB=database, ROOT=root,
-            ),
-        ):
-            with contextlib.redirect_stdout(io.StringIO()):
-                bdb.main()
+        rows = [
+            (1, "54-55", "Liber-Primus / 54-55-jpg", "2021-03-14 09:05",
+             "alice", 0, "first message", "", 1, 4),
+            (2, "54-55", "Liber-Primus / 54-55-jpg", "2021-03-14 09:06",
+             "bob", 1, "runes ᚠᚢᚦᚩᚱᚳ here\nsecond line", "", 2, 7),
+            (3, "54-55", "Liber-Primus / 54-55-jpg", "2021-03-14 09:07",
+             "carol", 0, "indices 19, 21, 23, 27 and a matrix\n1 0 0\n0 -1 0",
+             "", 3, 11),
+            (4, "54-55", "Liber-Primus / 54-55-jpg", "2021-03-14 09:08",
+             "dave", 0, "", "{Attachments}\nhttps://example.invalid/a.png", 4, 16),
+        ]
+        for index in range(needle_count):
+            rows.append((
+                5 + index, "54-55", "Liber-Primus / 54-55-jpg",
+                f"2021-03-14 09:{10 + index}", f"solver{index}", 0,
+                f"needle {index}", "", 5 + index, 20 + index * 3,
+            ))
+        with sqlite3.connect(database) as db:
+            db.executescript(DB_SCHEMA)
+            db.executemany(
+                "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?)", rows,
+            )
+            db.executemany(
+                "INSERT INTO msg_fts(rowid, body) VALUES (?,?)",
+                ((row[0], row[6]) for row in rows),
+            )
+            canon, _ = runes.canonicalise_query("ᚠᚢᚦᚩᚱᚳ")
+            db.execute(
+                "INSERT INTO runes VALUES (1,2,'runic','ᚠᚢᚦᚩᚱᚳ',?,6)",
+                (canon,),
+            )
+            db.execute("INSERT INTO rune_fts(rowid, canon) VALUES (1,?)", (canon,))
+        with mock.patch.object(dsearch, "DISCORD_DB", database):
             yield root
 
 
@@ -72,71 +88,20 @@ def call_dsearch(argv):
     return code, output.getvalue(), error.getvalue()
 
 
-class TestDiscordIndex(unittest.TestCase):
-    def test_parser_extracts_messages_and_citable_lines(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "54-55.txt"
-            path.write_text(EXPORT, encoding="utf-8")
-            messages = list(bdb.parse_file(path))
-        self.assertEqual([message.author for message in messages], [
-            "alice", "bob", "carol", "dave",
-        ])
-        self.assertTrue(messages[1].pinned)
-        self.assertEqual(messages[0].ts, "2021-03-14 09:05")
-        lines = EXPORT.splitlines()
-        for message in messages:
-            self.assertIn(message.author, lines[message.line - 1])
-
-    def test_parser_separates_attachments(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "54-55.txt"
-            path.write_text(EXPORT, encoding="utf-8")
-            messages = list(bdb.parse_file(path))
-        self.assertEqual(messages[-1].body, [])
-        self.assertIn("{Attachments}", messages[-1].extra)
-
-    def test_header_requires_a_blank_line(self):
-        text = (
-            "\n[3/14/2021 9:05 AM] alice\nquoting:\n"
-            "[3/14/2021 9:06 AM] bob\nstill me\n"
+class TestDiscordDatabase(unittest.TestCase):
+    def test_committed_database_is_complete_and_healthy(self):
+        database = Path(__file__).parents[1] / "discord.db"
+        self.assertTrue(database.is_file())
+        self.assertEqual(
+            hashlib.sha256(database.read_bytes()).hexdigest(),
+            "35a1b7cd0c49eeff6f87aea4c8d60861ded8ad35fccf9aaa026b5c29e3d3eca0",
         )
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "x.txt"
-            path.write_text(text, encoding="utf-8")
-            messages = list(bdb.parse_file(path))
-        self.assertEqual(len(messages), 1)
-        self.assertIn("[3/14/2021 9:06 AM] bob", messages[0].body)
-
-    def test_index_contains_messages_runes_and_provenance(self):
-        with archive() as root:
-            with sqlite3.connect(root / "discord.db") as database:
-                self.assertEqual(
-                    database.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 4,
-                )
-                self.assertEqual(
-                    database.execute(
-                        "SELECT COUNT(*) FROM runes WHERE notation='numeric'"
-                    ).fetchone()[0],
-                    1,
-                )
-                file, size, digest = database.execute(
-                    "SELECT file, bytes, sha256 FROM provenance"
-                ).fetchone()
-            data = (root / file).read_bytes()
-            self.assertEqual(size, len(data))
-            self.assertEqual(digest, hashlib.sha256(data).hexdigest())
-            self.assertFalse((root / "discord.db-wal").exists())
-
-    def test_index_build_is_atomic(self):
-        with archive() as root:
-            database = root / "discord.db"
-            before = database.read_bytes()
-            with mock.patch.object(bdb, "build", side_effect=RuntimeError("boom")):
-                with self.assertRaises(RuntimeError), \
-                     contextlib.redirect_stdout(io.StringIO()):
-                    bdb.main()
-            self.assertEqual(database.read_bytes(), before)
-            self.assertFalse((root / "discord.db.building").exists())
+        with sqlite3.connect(database) as db:
+            self.assertEqual(db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 109917,
+            )
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM runes").fetchone()[0], 7755)
 
 
 class TestAgentInstructions(unittest.TestCase):
@@ -169,16 +134,12 @@ class TestDsearch(unittest.TestCase):
         with archive():
             code, output, _ = call_dsearch(["first"])
         self.assertEqual(code, 0)
-        self.assertIn("1  discord/54-55.txt:", output)
+        self.assertIn("1  discord:54-55:4", output)
         self.assertIn("first message", output)
         self.assertNotIn("second line", output)
 
     def test_search_json_has_ids_and_total_count(self):
-        repeated = EXPORT + "".join(
-            f"\n[3/14/2021 9:{10 + index} AM] solver{index}\nneedle {index}\n"
-            for index in range(5)
-        )
-        with archive(repeated):
+        with archive(needle_count=5):
             _, output, _ = call_dsearch(["needle", "--limit", "2", "--json"])
         payload = json.loads(output)
         self.assertEqual(payload["hits"], 5)
@@ -250,7 +211,7 @@ class TestDsearch(unittest.TestCase):
         self.assertIn("first message", output)
         self.assertIn("invalid FTS5 syntax", error)
 
-    def test_missing_or_stale_schema_is_diagnosed(self):
+    def test_missing_or_incompatible_database_is_diagnosed(self):
         with tempfile.TemporaryDirectory() as temporary:
             with mock.patch.object(dsearch, "DISCORD_DB", Path(temporary) / "missing"):
                 self.assertEqual(call_dsearch(["first"])[0], 2)
@@ -259,10 +220,7 @@ class TestDsearch(unittest.TestCase):
                 database.execute("DROP TABLE msg_fts")
             code, _, error = call_dsearch(["first"])
         self.assertEqual(code, 2)
-        self.assertIn("rebuild", error)
-
-    def test_index_and_query_share_rune_minimum(self):
-        self.assertEqual(bdb.MIN_CANON, runes.MIN_INDEXED)
+        self.assertIn("restore the committed database", error)
 
 
 class TestExplog(unittest.TestCase):

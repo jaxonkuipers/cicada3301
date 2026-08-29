@@ -27,7 +27,7 @@ Upstream numbers the whole book 0–74 in one run. That appears as the `book_pag
 
 `intro-00` and `intro-02` are front matter — a title page and a chapter divider — and carry no runes, so they have an image but no transcription.
 
-This directory intentionally contains no candidate plaintext, hypothesis ranking, or exploratory analysis for the unsolved sections. Community proposals remain in [`../../../discord/`](../../../discord/) without being promoted into canonical corpus facts.
+This directory intentionally contains no candidate plaintext, hypothesis ranking, or exploratory analysis for the unsolved sections. Community proposals remain searchable in [`../../../discord.db`](../../../discord.db) without being promoted into canonical corpus facts.
 
 ## Reading the transcription
 

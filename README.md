@@ -7,7 +7,7 @@ This repository reconstructs the authenticated 2012–2017 Cicada 3301 route and
 - `research/SETTLED.md` contains compact established state.
 - `research/attacks/` receives new investigations.
 - `research/explog/` receives the current append-only experiment record.
-- `discord/` contains the searchable community archive used by `tools.dsearch`.
+- `discord.db` is the preserved, non-regenerable community archive used by `tools.dsearch`; it contains 109,917 messages across 13 channels.
 
 Verify the baseline with:
 

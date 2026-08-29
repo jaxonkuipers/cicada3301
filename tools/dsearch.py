@@ -7,7 +7,6 @@ citations. ``show`` retrieves full surrounding conversations for selected ids.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sqlite3
@@ -17,7 +16,7 @@ from datetime import datetime
 from typing import NamedTuple
 
 from lib import runes
-from lib.paths import DISCORD, DISCORD_DB, ROOT
+from lib.paths import DISCORD_DB
 
 DEFAULT_LIMIT = 50
 DEFAULT_SNIPPET = 240
@@ -49,42 +48,6 @@ class Hit(NamedTuple):
 def die(message: str) -> SystemExit:
     print(message, file=sys.stderr)
     return SystemExit(2)
-
-
-def check_stale(db: sqlite3.Connection) -> None:
-    """Warn when the exports differ from the material in the index."""
-    try:
-        rows = db.execute("SELECT file, bytes, sha256 FROM provenance").fetchall()
-    except sqlite3.OperationalError:
-        print(
-            "warning: discord.db has no provenance; rebuild it with "
-            "python3 -m tools.build_discord_db",
-            file=sys.stderr,
-        )
-        return
-    indexed = {row["file"]: (row["bytes"], row["sha256"]) for row in rows}
-    try:
-        sizes = {
-            str(path.relative_to(ROOT)): path.stat().st_size
-            for path in DISCORD.glob("*.txt")
-        }
-        current = sizes
-        if sizes == {name: size for name, (size, _) in indexed.items()}:
-            current = {
-                str(path.relative_to(ROOT)): (
-                    path.stat().st_size,
-                    hashlib.sha256(path.read_bytes()).hexdigest(),
-                )
-                for path in DISCORD.glob("*.txt")
-            }
-    except OSError as exc:
-        raise die(f"cannot read Discord exports: {exc}") from None
-    if indexed != current:
-        print(
-            "warning: Discord exports changed; rebuild discord.db with "
-            "python3 -m tools.build_discord_db",
-            file=sys.stderr,
-        )
 
 
 def filters(args: argparse.Namespace) -> tuple[str, list[str]]:
@@ -130,8 +93,8 @@ def fts_rows(
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc):
             raise die(
-                "discord.db predates this search schema; rebuild it with "
-                "python3 -m tools.build_discord_db"
+                "discord.db is incompatible with this Dsearch version; "
+                "restore the committed database"
             ) from None
         terms = re.findall(r"\w+", query)
         if not terms:
@@ -225,7 +188,7 @@ def search_payload(
             "id": hit.id,
             "channel": hit.channel,
             "channel_name": hit.channel_name,
-            "file": f"discord/{hit.channel}.txt",
+            "source": f"discord:{hit.channel}:{hit.line}",
             "line": hit.line,
             "ts": hit.ts,
             "author": hit.author,
@@ -258,7 +221,7 @@ def render_search(hits: list[Hit], total: int) -> None:
         snippet, truncated = compact(hit.body)
         tail = " …" if truncated else ""
         print(
-            f"{hit.id}  discord/{hit.channel}.txt:{hit.line}  "
+            f"{hit.id}  discord:{hit.channel}:{hit.line}  "
             f"{hit.ts}  {hit.author}{pin}{extra}"
         )
         if hit.note:
@@ -312,7 +275,7 @@ def show_payload(
         output.append({
             "channel": channel,
             "channel_name": rows[0]["channel_name"],
-            "file": f"discord/{channel}.txt",
+            "source": f"discord:{channel}:{rows[0]['line']}",
             "messages": [
                 {
                     "id": row["id"],
@@ -336,7 +299,7 @@ def render_show(
     for channel, rows in conversations:
         print(
             f"\n=== #{rows[0]['channel_name']}  ·  "
-            f"discord/{channel}.txt:{rows[0]['line']} ==="
+            f"discord:{channel}:{rows[0]['line']} ==="
         )
         for row in rows:
             mark = ">" if row["id"] in selected else " "
@@ -391,13 +354,10 @@ def main(argv: list[str] | None = None) -> int:
         if not showing and args.limit < 1:
             raise die("--limit must be positive")
         if not DISCORD_DB.exists():
-            raise die(
-                "discord.db is missing; build it with python3 -m tools.build_discord_db"
-            )
+            raise die("discord.db is missing from this checkout")
 
         with closing(sqlite3.connect(f"{DISCORD_DB.as_uri()}?mode=ro", uri=True)) as db:
             db.row_factory = sqlite3.Row
-            check_stale(db)
             if showing:
                 conversations = conversation_rows(db, args.ids, args.window)
                 selected = set(args.ids)
