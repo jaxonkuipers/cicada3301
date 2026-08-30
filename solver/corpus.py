@@ -23,7 +23,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from solver import corpus_manifest
+from solver import corpus_manifest, pgp
 from solver.paths import (
     CICADA_PUBLIC_KEY,
     COMMUNICATIONS_INDEX,
@@ -548,8 +548,8 @@ class Communication:
     communications.csv records route ownership, round and observed order
     separately from signature time. This preserves pre-signed objects such as
     2013's onion pointer and the April-signed locator delivered in May 2014.
-    This loader normalizes signed bodies and includes the source files in
-    corpus_sha256.
+    This loader removes signed-message envelopes while preserving payload
+    whitespace and includes the source files in corpus_sha256.
     """
 
     id: str
@@ -572,22 +572,10 @@ class Communication:
         return [ln for ln in self.body.splitlines() if ln]
 
 
-_PGP_START = "-----BEGIN PGP SIGNED MESSAGE-----"
-_PGP_SIG = "-----BEGIN PGP SIGNATURE-----"
-
-
 def _read_communication(row: dict[str, str]) -> Communication:
     path = CORPUS / row["path"]
-    raw = path.read_text(encoding="utf-8", errors="replace")
-    body = raw
-    if _PGP_START in body:
-        body = body.split(_PGP_START, 1)[1]
-        # Drop the armour headers ("Hash: SHA1") up to the first blank line.
-        body = body.split("\n\n", 1)[-1]
-    if _PGP_SIG in body:
-        body = body.split(_PGP_SIG, 1)[0]
-    # strip("\n"), not strip(): whitespace is content here. The morse message
-    # is nothing but tabs and spaces, and .strip() reduced it to "".
+    raw = path.read_text(encoding="utf-8")
+    body = pgp.clearsigned_body(raw) if pgp._CLEAR in raw else raw.strip("\n")
     return Communication(
         id=row["id"],
         sequence=int(row["sequence"]),
@@ -598,7 +586,7 @@ def _read_communication(row: dict[str, str]) -> Communication:
         role=row["role"],
         path=path,
         date=(row["observed_at"] or row["signed_at"])[:7],
-        body=body.strip("\n"),
+        body=body,
         raw=raw,
     )
 
@@ -809,10 +797,10 @@ EXPECTED_OTHER_CHARS = 1212
 # deliberately not counted as a communication.
 EXPECTED_COMMUNICATIONS = 37
 
-# 2013-01-rune-table-morse carries its whole payload in tabs and spaces, so a
-# body that strips whitespace reads as an empty message. Pinned because the
-# first version of the reader did exactly that and lost it silently.
-EXPECTED_MORSE_CHARS = 558
+# 2013-01-rune-table-morse carries its whole payload in tabs and spaces,
+# including one leading empty line after the armor separator. Pinned because
+# the first version of the reader stripped that whitespace and lost it silently.
+EXPECTED_MORSE_CHARS = 559
 
 # Sections whose sentences deliberately cover part of the rune stream.
 # 0.1: the last 76 runes are the unencrypted 1033 word square (intro-05), which
@@ -984,6 +972,10 @@ def verify() -> list[tuple[str, bool, str]]:
         len(s) for p in c.pages if p.transcription for _, s in p.text().other
     )
     status = c._status_unsolved()
+    leaked_headers = [
+        message.id for message in c.communications
+        if message.body.startswith("Hash:")
+    ]
     return [
         ("corpus files sha256", files_sha == EXPECTED_CORPUS_SHA,
          files_sha[:16] + "..."),
@@ -1012,6 +1004,12 @@ def verify() -> list[tuple[str, bool, str]]:
          == EXPECTED_MORSE_CHARS,
          f"{len(c.communications)} messages, morse payload "
          f"{len(c.communication('2013-01-rune-table-morse').body)} chars"),
+        (
+            "communication envelopes stripped",
+            not leaked_headers,
+            "no body begins with an armor Hash header"
+            if not leaked_headers else f"leaked headers: {leaked_headers}",
+        ),
         _check_speller(c),
         _check_headlines(c),
         _check_sentences_match_transcription(c),

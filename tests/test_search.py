@@ -115,11 +115,6 @@ class BeamSkips(unittest.TestCase):
         with self.assertRaises(ValueError):
             search.beam_skips([1, 2], [9], lambda ct, s: ct, lambda t: 0.0)
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ExactSkips(unittest.TestCase):
     """`search.solve` is `beam_skips` at infinite width. Gate it on both.
 
@@ -152,17 +147,16 @@ class ExactSkips(unittest.TestCase):
         self.ct = cipher.vigenere_encrypt(self.pt, self.key, interrupter=0)
         self.planted = frozenset(i for i, p in enumerate(self.pt) if p == 0)
         self.cands = search.candidates(self.ct)
-        self.rows, self.cums = search.layers_repeating(
-            self.ct, self.key, search.sub)
+        self.layers = search.layers_repeating(self.ct, self.key, search.sub)
 
     def test_recovers_the_planted_set_exactly(self):
-        _, skips, pt = search.solve(self.ct, self.cands, self.rows, self.cums)
+        _, skips, pt = search.solve(self.ct, self.cands, self.layers)
         self.assertEqual(skips, self.planted)
         self.assertEqual(list(pt), list(self.pt))
 
     def test_objective_is_at_least_the_beams(self):
         """Exact maximisation cannot lose to a width-limited search of it."""
-        obj, _, _ = search.solve(self.ct, self.cands, self.rows, self.cums)
+        obj, _, _ = search.solve(self.ct, self.cands, self.layers)
 
         def decrypt(ct, skips):
             return cipher.vigenere_decrypt(ct, self.key, skips=skips)
@@ -184,8 +178,8 @@ class ExactSkips(unittest.TestCase):
         ct = cipher.vigenere_encrypt(pt, key, interrupter=0)
         cands = search.candidates(ct)
         self.assertLessEqual(len(cands), 16, "case too large to enumerate")
-        rows, cums = search.layers_repeating(ct, key, search.sub)
-        obj, skips, _ = search.solve(ct, cands, rows, cums)
+        layers = search.layers_repeating(ct, key, search.sub)
+        obj, skips, _ = search.solve(ct, cands, layers)
 
         best_obj, best_set = float("-inf"), None
         for mask in range(1 << len(cands)):
@@ -258,8 +252,8 @@ class ExactSkips(unittest.TestCase):
         cands = search.candidates(ct)
         key = gp.spell("DIVINITY")
         stream = [key[j % len(key)] for j in range(len(ct) + len(cands) + 2)]
-        rows, cums = search.layers_stream(ct, stream, search.sub, len(cands) + 1)
-        _, skips, pt = search.solve(ct, cands, rows, cums)
+        layers = search.layers_stream(ct, stream, search.sub, len(cands) + 1)
+        _, skips, pt = search.solve(ct, cands, layers)
 
         self.assertNotEqual(set(skips), set(truth),
                             "search.py:148-157 says the DP optimum is not the "
@@ -286,9 +280,75 @@ class ExactSkips(unittest.TestCase):
         cands = search.candidates(ct)
         self.assertEqual(len(cands), 5, "0.13 should carry five ciphertext F")
         stream = list(itertools.islice(cipher.phi_primes(), len(ct) + 10))
-        rows, cums = search.layers_stream(ct, stream, search.sub, len(cands) + 1)
-        _, skips, pt = search.solve(ct, cands, rows, cums)
+        layers = search.layers_stream(ct, stream, search.sub, len(cands) + 1)
+        _, skips, pt = search.solve(ct, cands, layers)
 
         self.assertEqual(set(skips), {56})
         self.assertEqual(list(pt), list(cipher.phi_prime_decrypt(ct, skips={56})))
         self.assertTrue(c.gp.unspell(list(pt)).startswith("ANENDWITHINTHEDEEPWEB"))
+
+    def test_objective_is_the_score_of_the_returned_plaintext_and_skips(self):
+        obj, skips, pt = search.solve(self.ct, self.cands, self.layers)
+        tab = search.tab2()
+        direct = sum(tab[a * search.N + b] for a, b in zip(pt, pt[1:], strict=False))
+        import math
+        direct += len(skips) * math.log10(0.40)
+        direct += (len(self.cands) - len(skips)) * math.log10(0.60)
+        self.assertAlmostEqual(obj, direct, places=9)
+        self.assertEqual(pt, cipher.vigenere_decrypt(self.ct, self.key, skips))
+
+    def test_truncated_absolute_phase_support_is_rejected(self):
+        layers = search.layers_repeating(
+            self.ct, self.key, search.sub, maxphase=1,
+        )
+        self.assertIsNone(layers.phase_period)
+        self.assertGreater(len(self.cands), 1)
+        with self.assertRaisesRegex(ValueError, "insufficient phase rows"):
+            search.solve(self.ct, self.cands, layers)
+
+    def test_complete_repeating_phase_support_wraps_at_the_key_length(self):
+        key = [7]
+        layers = search.layers_repeating(self.ct, key, search.sub)
+        self.assertEqual(layers.phase_period, 1)
+        _, skips, pt = search.solve(self.ct, self.cands, layers)
+        self.assertEqual(pt, cipher.vigenere_decrypt(self.ct, key, skips))
+
+    def test_solve_rejects_non_f_candidates_and_bad_dimensions(self):
+        with self.assertRaises(ValueError):
+            search.cum_of([0, 29])
+        non_f = next(i for i, value in enumerate(self.ct) if value != 0)
+        with self.assertRaisesRegex(ValueError, "ciphertext F"):
+            search.solve(self.ct, [non_f], self.layers)
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            search.solve(self.ct, [self.cands[0], self.cands[0]], self.layers)
+        with self.assertRaises(TypeError):
+            search.solve(self.ct, [True], self.layers)
+
+        malformed = search.LayerTable(
+            (self.layers.rows[0][:-1],),
+            1,
+            self.layers.ciphertext,
+        )
+        with self.assertRaisesRegex(ValueError, "dimensions"):
+            search.solve(self.ct, self.cands, malformed)
+
+    def test_candidates_preserve_one_shot_ciphertext_iterables(self):
+        self.assertEqual(search.candidates(iter([0, 1, 0, 2])), [0, 2])
+
+    def test_solve_rejects_layers_built_for_another_ciphertext(self):
+        other = list(self.ct)
+        position = next(i for i, value in enumerate(other) if value != 0)
+        other[position] = other[position] % 28 + 1
+        self.assertEqual(search.candidates(other), self.cands)
+        with self.assertRaisesRegex(ValueError, "different ciphertext"):
+            search.solve(other, self.cands, self.layers)
+
+    def test_legacy_rows_and_cums_call_gets_a_migration_diagnostic(self):
+        with self.assertRaisesRegex(TypeError, "legacy rows/cums"):
+            search.solve(
+                self.ct, self.cands, self.layers.rows, self.layers.cums
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

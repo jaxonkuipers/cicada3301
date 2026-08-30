@@ -185,28 +185,65 @@ _CLEAR = "-----BEGIN PGP SIGNED MESSAGE-----"
 _SIGSTART = "-----BEGIN PGP SIGNATURE-----"
 
 
+def clearsigned_body(raw: str) -> str:
+    """Return a clearsigned message body with its source whitespace intact.
+
+    OpenPGP permits the blank line after the ``Hash:`` headers to contain
+    whitespace. Two preserved 2012 messages use a single space there, while
+    the 2013 morse carrier begins its signed body with an additional empty
+    line. Parse the envelope by lines so both cases remain distinguishable.
+
+    The line ending immediately before the signature delimiter belongs to the
+    clearsign framework and is removed. Every other body byte represented by
+    the decoded string, including leading and trailing whitespace, is kept.
+    """
+    marker = raw.find(_CLEAR)
+    if marker < 0:
+        raise KeyError("no PGP SIGNED MESSAGE block")
+    cursor = marker + len(_CLEAR)
+    if raw.startswith("\r\n", cursor):
+        cursor += 2
+    elif raw.startswith("\n", cursor):
+        cursor += 1
+    else:
+        raise ValueError("PGP SIGNED MESSAGE marker is not line terminated")
+
+    while True:
+        line_end = raw.find("\n", cursor)
+        if line_end < 0:
+            raise ValueError("clearsigned message has no body separator")
+        line = raw[cursor:line_end]
+        if line.endswith("\r"):
+            line = line[:-1]
+        cursor = line_end + 1
+        if _ARMOR_HEADER.match(line):
+            continue
+        if not line.strip():
+            break
+        raise ValueError(f"unexpected clearsign header line: {line!r}")
+
+    signature = re.search(
+        rf"(?m)^{re.escape(_SIGSTART)}\r?$", raw[cursor:]
+    )
+    if signature is None:
+        raise KeyError("no PGP SIGNATURE block")
+    body = raw[cursor:cursor + signature.start()]
+    if body.endswith("\r\n"):
+        return body[:-2]
+    if body.endswith("\n"):
+        return body[:-1]
+    if body:
+        raise ValueError("PGP SIGNATURE marker is not on a new line")
+    return body
+
+
 def cleartext_signed_bytes(raw: str) -> bytes:
     """The exact bytes hashed for a clearsigned message (RFC 4880 s7.1).
 
     Dash-escaping removed, trailing whitespace stripped from every line, lines
     joined with CRLF, and NO line ending after the last line.
     """
-    body = raw.split(_CLEAR, 1)[1]
-    body = body.replace("\r\n", "\n")
-    body = body.split(_SIGSTART, 1)[0]
-    # Past the "Hash:" armor headers. The separator line is blank, and in
-    # 2012-01-patience-check-back and 2012-01-location-numbers "blank" means a
-    # single space -- which the canonicaliser below would strip anyway, so the
-    # distinction only matters for finding where the headers end.
-    hdr = body.split("\n")[1:]
-    for i, ln in enumerate(hdr):
-        if _ARMOR_HEADER.match(ln):
-            continue
-        hdr = hdr[i + 1:] if not ln.strip() else hdr[i:]
-        break
-    body = "\n".join(hdr)
-    if body.endswith("\n"):
-        body = body[:-1]                       # the newline before the sig line
+    body = clearsigned_body(raw).replace("\r\n", "\n")
     lines = []
     for ln in body.split("\n"):
         if ln.startswith("- "):

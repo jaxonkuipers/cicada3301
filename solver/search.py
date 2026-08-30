@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field
+from numbers import Integral
 
-from solver import fitness
+from solver import fitness, stats
 
 Decrypt = Callable[[Sequence[int], frozenset], Sequence[int]]
 Score = Callable[[Sequence[int]], float]
@@ -81,8 +83,11 @@ def beam_skips(
         raise ValueError("width must be >= 1")
     if density is not None and not 0.0 < density < 1.0:
         raise ValueError(f"density must be in (0, 1), got {density}")
-    ct = list(ct)
-    cand = sorted({int(p) for p in candidates})
+    ct = list(stats.as_indices(ct))
+    raw_candidates = list(candidates)
+    if any(isinstance(p, bool) or not isinstance(p, Integral) for p in raw_candidates):
+        raise TypeError("candidate positions must be integral values")
+    cand = sorted({int(p) for p in raw_candidates})
     if any(p < 0 or p >= len(ct) for p in cand):
         raise ValueError("candidate positions must be inside the ciphertext")
     rank = final_score or score
@@ -123,10 +128,11 @@ def beam_skips(
 # both divided by the SAME prefix length at every step, so its objective is a
 # sum; and `solver.cipher.apply_stream` makes the plaintext at position i depend on
 # the ciphertext, on i, and on the COUNT of skips before i -- never on which
-# ones. So `(skips mod M, was-the-last-candidate-skipped)` is a sufficient
-# statistic, transitions only go phase p -> p or p+1, and a Viterbi recursion
-# returns the beam's answer AT INFINITE WIDTH in O(m*M) per key. There is no
-# width to tune and no pruning to defend.
+# ones. So `(skip phase, was-the-last-candidate-skipped)` is a sufficient
+# statistic: repeating keys wrap phase at their key length, while aperiodic
+# streams use absolute skip counts. Transitions only go phase p -> p or p+1,
+# and a Viterbi recursion returns the beam's answer AT INFINITE WIDTH in O(m*M)
+# per key. There is no width to tune and no pruning to defend.
 #
 # Measured against the beam at width 50, this recursion is 136–678 times faster
 # on representative solved-section controls.
@@ -171,6 +177,13 @@ def tab2() -> list[float]:
 
 def cum_of(row: Sequence[int]) -> list[float]:
     """cum[i] = sum of bigram logs over positions 1..i of `row`."""
+    row = stats.as_indices(row)
+    if len(row) == 0:
+        raise ValueError("cannot build bigram sums for an empty row")
+    return _cum_validated(row)
+
+
+def _cum_validated(row: Sequence[int]) -> list[float]:
     t = tab2()
     n = len(row)
     cum = [0.0] * n
@@ -186,24 +199,133 @@ def cum_of(row: Sequence[int]) -> list[float]:
 
 def candidates(ct: Sequence[int]) -> list[int]:
     """The demonstrated interrupter space is ciphertext F (index 0)."""
+    ct = stats.as_indices(ct)
     return [i for i, x in enumerate(ct) if x == 0]
+
+
+@dataclass(frozen=True)
+class LayerTable:
+    """Plaintext rows indexed by the number of prior skipped F runes.
+
+    ``ciphertext`` binds the derived rows to their exact source so a table
+    cannot be reused accidentally with a same-length candidate stream.
+    ``phase_period`` names an authored repeating-key period and permits phase
+    wrap at exactly that many rows. ``None`` means the rows enumerate absolute
+    skip counts, so a solve requiring more skips than represented is rejected.
+    """
+
+    rows: tuple[tuple[int, ...], ...]
+    phase_period: int | None
+    ciphertext: tuple[int, ...]
+    cums: tuple[tuple[float, ...], ...] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        normalized = tuple(tuple(stats.as_indices(row)) for row in self.rows)
+        ciphertext = tuple(stats.as_indices(self.ciphertext))
+        if not normalized:
+            raise ValueError("layer table needs at least one phase row")
+        if self.phase_period is not None:
+            if isinstance(self.phase_period, bool) or not isinstance(
+                self.phase_period, Integral
+            ):
+                raise TypeError("phase period must be an integral value")
+            if int(self.phase_period) != len(normalized):
+                raise ValueError(
+                    f"phase period {self.phase_period} requires exactly that many "
+                    f"rows, got {len(normalized)}"
+                )
+        object.__setattr__(self, "rows", normalized)
+        object.__setattr__(self, "ciphertext", ciphertext)
+        object.__setattr__(
+            self, "cums", tuple(tuple(_cum_validated(row)) for row in normalized)
+        )
+
+    def phase(self, skips: int) -> int:
+        if self.phase_period is not None:
+            return skips % int(self.phase_period)
+        if skips >= len(self.rows):
+            raise ValueError(
+                f"layer table supports at most {len(self.rows) - 1} skips, got {skips}"
+            )
+        return skips
+
+
+def _layer_table(
+    rows: Sequence[Sequence[int]],
+    phase_period: int | None,
+    ciphertext: Sequence[int],
+) -> LayerTable:
+    return LayerTable(
+        tuple(tuple(row) for row in rows), phase_period, tuple(ciphertext)
+    )
+
+
+def _validate_layers(layers: LayerTable, text_length: int, candidate_count: int) -> None:
+    if not isinstance(layers, LayerTable):
+        raise TypeError(
+            "solve() requires a LayerTable from layers_repeating() or "
+            "layers_stream(); legacy rows/cums arguments lack phase metadata"
+        )
+    M = len(layers.rows)
+    if len(layers.ciphertext) != text_length:
+        raise ValueError(
+            f"layer ciphertext has {len(layers.ciphertext)} runes, "
+            f"solve ciphertext has {text_length}"
+        )
+    if M == 0 or len(layers.cums) != M:
+        raise ValueError("layer rows and cumulative rows must have the same nonzero length")
+    if layers.phase_period is None and candidate_count >= M:
+        raise ValueError(
+            f"insufficient phase rows: {candidate_count} candidate skips require "
+            f"{candidate_count + 1} absolute-phase rows, got {M}"
+        )
+    for phase, (row, cum) in enumerate(zip(layers.rows, layers.cums, strict=True)):
+        if len(row) != text_length or len(cum) != text_length:
+            raise ValueError(
+                f"phase {phase} dimensions are row={len(row)}, cumulative={len(cum)}, "
+                f"ciphertext={text_length}"
+            )
+
+
+def _solve_candidates(ct: Sequence[int], values: Sequence[int]) -> list[int]:
+    raw = list(values)
+    if any(isinstance(p, bool) or not isinstance(p, Integral) for p in raw):
+        raise TypeError("candidate positions must be integral values")
+    cands = [int(p) for p in raw]
+    if any(a >= b for a, b in zip(cands, cands[1:], strict=False)):
+        raise ValueError("candidate positions must be unique and strictly increasing")
+    if any(p < 0 or p >= len(ct) for p in cands):
+        raise ValueError("candidate positions must be inside the ciphertext")
+    non_f = [p for p in cands if ct[p] != 0]
+    if non_f:
+        raise ValueError(f"interrupter candidates must be ciphertext F: {non_f[:5]}")
+    return cands
 
 
 def solve(
     ct: Sequence[int],
     cands: Sequence[int],
-    rows: Sequence[Sequence[int]],
-    cums: Sequence[Sequence[float]],
+    layers: LayerTable,
     density: float | None = 0.40,
 ) -> tuple[float, frozenset[int], list[int]]:
     """Exact max of the beam's objective. -> (objective, skips, plaintext).
 
-    `rows[p][i]` is the plaintext rune at position i when the number of skips
-    strictly before i is congruent to p modulo len(rows); `cums[p]` its bigram
-    prefix sums. Both are what `layers()` builds.
+    ``layers.rows[p][i]`` is the plaintext rune at position i after phase p;
+    its metadata distinguishes a true repeating-key phase from absolute phase
+    rows that have finite support.
     """
+    ct = list(stats.as_indices(ct))
+    if not ct:
+        raise ValueError("ciphertext must contain at least one rune")
+    cands = _solve_candidates(ct, cands)
     n = len(ct)
     m = len(cands)
+    _validate_layers(layers, n, m)
+    if layers.ciphertext != tuple(ct):
+        raise ValueError("layer table was built for a different ciphertext")
+    if density is not None and not 0.0 < density < 1.0:
+        raise ValueError(f"density must be in (0, 1), got {density}")
+    rows, cums = layers.rows, layers.cums
     M = len(rows)
     t = tab2()
     if density is None:
@@ -223,12 +345,12 @@ def solve(
     c0 = cands[0]
     if c0 == 0:
         V0[0] = lp_k
-        V1[1 % M] = lp_s
+        V1[layers.phase(1)] = lp_s
     else:
         base = cums[0][c0 - 1]
         prev = rows[0][c0 - 1]
         V0[0] = base + t[prev * N + rows[0][c0]] + lp_k
-        V1[1 % M] = base + t[prev * N] + lp_s
+        V1[layers.phase(1)] = base + t[prev * N] + lp_s
 
     for idx in range(m - 1):
         a, b = cands[idx], cands[idx + 1]
@@ -268,7 +390,7 @@ def solve(
                     val, came = cand_skip, 1
                 else:
                     val, came = cand_keep, 0
-                q = (p + bp) % M
+                q = layers.phase(p + bp)
                 tgt = n1 if bp else n0
                 if val > tgt[q]:
                     tgt[q] = val
@@ -299,7 +421,7 @@ def solve(
         if idx == 0:
             break
         came = back[idx - 1][bp * M + p]
-        p = (p - bp) % M
+        p = (p - bp) % M if layers.phase_period is not None else p - bp
         bp = came
     skips = frozenset(cands[i] for i in range(m) if flags[i])
 
@@ -313,43 +435,62 @@ def solve(
                 nxt += 1
                 continue
             nxt += 1
-        pt[i] = rows[s % M][i]
+        pt[i] = rows[layers.phase(s)][i]
     return best, skips, pt
 
 
 def layers_repeating(ct: Sequence[int], key: Sequence[int], op,
-                     maxphase: int | None = None) -> tuple[list, list]:
+                     maxphase: int | None = None) -> LayerTable:
     """Rows for a repeating key: phase = skips mod len(key).
 
-    `maxphase` caps the rows built at the number of candidates, which is the
-    most skips that can ever have happened. A 256-element cyclic key on a
-    section with 131 candidates needs 132 rows, not 256 -- the phase cannot
-    wrap, and `solve`'s modular step is only ever exercised inside the range
-    it was given.
+    ``maxphase`` can cap construction at the largest absolute skip count a
+    caller needs. A cap below the key length produces finite, non-wrapping
+    support; building all key-length rows enables legitimate cyclic wrap.
     """
-    n, L = len(ct), len(key)
-    k = [x % N for x in key]
+    ct = list(stats.as_indices(ct))
+    k = list(stats.as_indices(key))
+    if not k:
+        raise ValueError("empty key")
+    if maxphase is not None:
+        if isinstance(maxphase, bool) or not isinstance(maxphase, Integral):
+            raise TypeError("maxphase must be an integer")
+        if maxphase < 0:
+            raise ValueError("maxphase must be >= 0")
+        maxphase = int(maxphase)
+    n, L = len(ct), len(k)
     nph = L if maxphase is None else min(L, maxphase + 1)
     rows = []
     for p in range(nph):
         rows.append([op(ct[i], k[(i - p) % L]) % N for i in range(n)])
-    return rows, [cum_of(r) for r in rows]
+    return _layer_table(rows, L if nph == L else None, ct)
 
 
 def layers_stream(ct: Sequence[int], stream: Sequence[int], op,
-                  nphase: int) -> tuple[list, list]:
+                  nphase: int) -> LayerTable:
     """Rows for an aperiodic keystream: phase = skips, 0..nphase-1.
 
     `stream[j]` must be defined for j in -(nphase-1) .. len(ct)-1 through the
     caller's own offsetting; this takes `stream` already sliced so that
     `stream[i]` is the element position i consumes when no skip has occurred.
     """
+    ct = list(stats.as_indices(ct))
+    stream = list(stream)
+    if any(isinstance(value, bool) or not isinstance(value, Integral) for value in stream):
+        raise TypeError("stream values must be integral")
+    stream = [int(value) for value in stream]
+    if isinstance(nphase, bool) or not isinstance(nphase, Integral):
+        raise TypeError("nphase must be an integer")
+    if nphase < 1:
+        raise ValueError("nphase must be >= 1")
+    nphase = int(nphase)
     n = len(ct)
+    if len(stream) < n:
+        raise ValueError(f"stream needs at least {n} runes, got {len(stream)}")
     rows = []
     for p in range(nphase):
         rows.append([op(ct[i], stream[i - p]) % N if i >= p
                      else op(ct[i], stream[0]) % N for i in range(n)])
-    return rows, [cum_of(r) for r in rows]
+    return _layer_table(rows, None, ct)
 
 
 def sub(x, k):

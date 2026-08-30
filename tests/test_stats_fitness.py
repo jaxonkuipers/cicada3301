@@ -4,6 +4,7 @@ import hashlib
 import random
 import unittest
 from collections import Counter
+from enum import IntEnum
 
 from solver import cipher, corpus, fitness, stats
 
@@ -11,6 +12,40 @@ c = corpus.load()
 
 
 class TestStats(unittest.TestCase):
+    def test_shared_index_validation_checks_every_rune(self):
+        class Rune(IntEnum):
+            F = 0
+            U = 1
+
+        accepted = [Rune.F, Rune.U, 28]
+        self.assertEqual(list(stats.as_indices(accepted)), [0, 1, 28])
+        for bad, error in (
+            ([0, 1, 29, 2], ValueError),
+            ([0, -1, 2], ValueError),
+            ([0, True, 2], TypeError),
+            ([0, 1.0, 2], TypeError),
+        ):
+            with self.assertRaises(error, msg=bad):
+                stats.as_indices(bad)
+
+    def test_shared_index_validation_preserves_one_shot_iterables(self):
+        self.assertEqual(
+            stats.counts(iter([0, 1, 1, 2])), Counter({1: 2, 0: 1, 2: 1})
+        )
+
+    def test_invalid_runes_cannot_reach_statistics_or_fitness_tables(self):
+        for fn in (
+            stats.ioc,
+            stats.frequencies,
+            lambda text: stats.ngrams(text, 2),
+            fitness.score,
+            fitness.judge,
+        ):
+            with self.assertRaises(ValueError, msg=fn):
+                fn([0, 1, 2, 29, 3, 4])
+        with self.assertRaises(ValueError):
+            stats.find([0, 1, 2], [1, 29])
+
     def test_unsolved_ioc_is_flat(self):
         # The published constraint: unigram IoC 1.000 over the unsolved stream.
         self.assertAlmostEqual(stats.ioc(c.unsolved.indices), 1.000, places=2)
@@ -165,7 +200,7 @@ class TestFitness(unittest.TestCase):
         # Every rune must fall inside some window; range() stopping short left
         # the last up-to-(step-1) runes scored by nothing.
         for length in (1000, 1010, 1024, 137):
-            w = fitness.windowed(list(range(length)), size=100, step=25)
+            w = fitness.windowed([i % 29 for i in range(length)], size=100, step=25)
             covered = {j for i, _ in w for j in range(i, i + 100)}
             self.assertEqual(covered, set(range(length)), length)
 

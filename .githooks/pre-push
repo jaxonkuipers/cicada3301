@@ -15,13 +15,11 @@ guard_corpus_evidence() {
     if [ -n "$comparison" ]; then
         changed=$(git -C "$repo_root" diff --name-only "$comparison" "$local_sha" -- \
             ':(glob)corpus/identity/**' \
-            ':(glob)corpus/records/*/artifacts/**' \
-            ':(glob)corpus/records/*/sources/**')
+            ':(glob)corpus/records/*/artifacts/**')
     else
         changed=$(git -C "$repo_root" ls-tree -r --name-only "$local_sha" -- \
             ':(glob)corpus/identity/**' \
-            ':(glob)corpus/records/*/artifacts/**' \
-            ':(glob)corpus/records/*/sources/**')
+            ':(glob)corpus/records/*/artifacts/**')
     fi
     if [ -n "$changed" ] && [ "${CICADA_CORPUS_MAINTENANCE:-}" != "1" ]; then
         echo "pre-push: immutable corpus evidence changed:" >&2

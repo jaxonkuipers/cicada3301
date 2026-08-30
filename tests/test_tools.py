@@ -111,6 +111,27 @@ class TestDsearch(unittest.TestCase):
         self.assertIn("first message", output)
         self.assertNotIn("second line", output)
 
+    def test_unknown_channel_is_an_error_with_available_names(self):
+        with archive():
+            code, output, error = call_dsearch([
+                "first", "--channel", "missing-channel",
+            ])
+        self.assertEqual(code, 2)
+        self.assertEqual(output, "")
+        self.assertIn("unknown Discord channel 'missing-channel'", error)
+        self.assertIn("54-55", error)
+
+    def test_corrupt_database_reports_a_cli_error(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "discord.db"
+            database.write_bytes(b"not a sqlite database")
+            with mock.patch.object(dsearch, "DISCORD_DB", database):
+                code, output, error = call_dsearch(["first"])
+        self.assertEqual(code, 2)
+        self.assertEqual(output, "")
+        self.assertIn("cannot read discord.db", error)
+        self.assertNotIn("Traceback", error)
+
     def test_attachment_metadata_is_searchable_and_compact(self):
         with archive():
             code, output, _ = call_dsearch(["example"])
@@ -211,8 +232,8 @@ class TestDsearch(unittest.TestCase):
 
 class TestWorktree(unittest.TestCase):
     @staticmethod
-    def result(stdout="", returncode=0):
-        return mock.Mock(stdout=stdout, stderr="", returncode=returncode)
+    def result(stdout="", stderr="", returncode=0):
+        return mock.Mock(stdout=stdout, stderr=stderr, returncode=returncode)
 
     def test_create_fetches_base_and_records_managed_wake(self):
         calls = []
@@ -239,6 +260,24 @@ class TestWorktree(unittest.TestCase):
         self.assertIn([
             "git", "worktree", "add", "-b", branch, str(path), "abc123",
         ], commands)
+
+    def test_create_reports_fetch_failure_before_creating_destination(self):
+        def runner(args, **kwargs):
+            if args == ["git", "fetch", "origin", "main"]:
+                return self.result(stderr="origin unavailable", returncode=128)
+            return self.result()
+
+        with tempfile.TemporaryDirectory() as temporary, \
+             mock.patch.object(worktree, "ROOT", Path("/repo")):
+            parent = Path(temporary) / "wakes"
+            with self.assertRaisesRegex(
+                worktree.WorktreeError, "cannot fetch origin/main: origin unavailable",
+            ):
+                worktree.create(
+                    "cicada-1", parent=parent, stamp="20260828-120000",
+                    runner=runner,
+                )
+            self.assertFalse(parent.exists())
 
     def test_publish_rebases_pushes_and_confirms_reachability(self):
         calls = []
@@ -276,6 +315,31 @@ class TestWorktree(unittest.TestCase):
 
         with self.assertRaisesRegex(worktree.WorktreeError, "commit the wake"):
             worktree.publish(root=Path("/wake"), runner=runner)
+
+    def test_publish_aborts_rebase_conflict_and_preserves_wake(self):
+        calls = []
+
+        def runner(args, **kwargs):
+            calls.append(args)
+            if args == ["git", "branch", "--show-current"]:
+                return self.result("wake/cicada-1-20260828\n")
+            if args[:3] == ["git", "config", "--get"]:
+                return self.result("cicada-1-20260828\n")
+            if args == ["git", "status", "--porcelain"]:
+                return self.result("")
+            if args == ["git", "rebase", "origin/main"]:
+                return self.result(stderr="CONFLICT", returncode=1)
+            if args == ["git", "diff", "--name-only", "--diff-filter=U"]:
+                return self.result("solver/cli/explog.py\nAGENTS.md\n")
+            return self.result()
+
+        with self.assertRaisesRegex(
+            worktree.WorktreeError,
+            "branch wake/cicada-1-20260828 remains resumable.*explog.py",
+        ):
+            worktree.publish(root=Path("/wake"), runner=runner)
+        self.assertIn(["git", "rebase", "--abort"], calls)
+        self.assertNotIn(["git", "push", "origin", "HEAD:main"], calls)
 
     def test_publish_retries_when_remote_advances(self):
         pushes = 0

@@ -1,22 +1,25 @@
-"""512-bit hash functions `hashlib` does not ship, in pure Python.
+"""The gated catalogue of 512-bit hash functions used by the oracle.
 
-This module contains functions that can be gated against published vectors and
-omits implementations without an independent known answer.
+The missing `hashlib` functions are implemented here in pure Python. The
+standard-library adapters live beside them so callers consume one catalogue.
 
-**`keccak3-512` is not `sha3_512`.** SHA-3 was standardised in August 2015 and
+**`keccak512` is not `sha3_512`.** SHA-3 was standardised in August 2015 and
 changed the domain-separation padding from Keccak's `0x01` to `0x06`; LP2 was
 published January 2014, so ORIGINAL Keccak is the period-correct function and
 `hashlib.sha3_512` is a different function that did not exist when page-56 was
 printed. Both are carried here, separately named.
 
-Every function in `ALL` is gated by `gate.py` against a published test vector
-or against `hashlib`. Nothing enters `ALL` ungated: a silently wrong hash
-function turns a negative result into a lie about coverage.
+`STDLIB` and `PUREPY` document provenance; `ALL` is their single combined
+catalogue. Tests gate every family against published vectors or `hashlib`.
 """
 
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
+
+HashFunction = Callable[[bytes], bytes]
 
 # --------------------------------------------------------------------------
 # Keccak-f[1600], the sponge under both original Keccak and SHA-3
@@ -203,7 +206,7 @@ def whirlpool(data: bytes) -> bytes:
 # --------------------------------------------------------------------------
 # FNV-512. Parameters DERIVED, not transcribed: the offset basis is FNV-0 of
 # Landon Curt Noll's signature string, and deriving it at 32 and 64 bits
-# reproduces the published constants exactly (gate.py).
+# reproduces the published constants exactly (tests/test_hashoracle.py).
 # --------------------------------------------------------------------------
 
 _FNV_SIG = b"chongo <Landon Curt Noll> /\\../\\"
@@ -331,22 +334,28 @@ def blake512(data: bytes) -> bytes:
 
 
 # --------------------------------------------------------------------------
-# The catalogue. Populated by gate.py, which refuses to add an ungated function.
+# The catalogue. Focused known-answer tests gate every included family.
+# These mappings are immutable because hashoracle caches tables derived from
+# their exact membership.
 # --------------------------------------------------------------------------
 
-STDLIB = {
+STDLIB: Mapping[str, HashFunction] = MappingProxyType({
     "sha512": lambda b: hashlib.sha512(b).digest(),
     "sha3_512": lambda b: hashlib.sha3_512(b).digest(),
     "blake2b": lambda b: hashlib.blake2b(b).digest(),
     "shake_256": lambda b: hashlib.shake_256(b).digest(64),
     "shake_128": lambda b: hashlib.shake_128(b).digest(64),
-}
+})
 
-PUREPY = {
+PUREPY: Mapping[str, HashFunction] = MappingProxyType({
     "keccak512": keccak512,
     "whirlpool": whirlpool,
     "fnv512_0": fnv512_0,
     "fnv512_1": fnv512_1,
     "fnv512_1a": fnv512_1a,
     "blake512": blake512,
-}
+})
+
+ALL: Mapping[str, HashFunction] = MappingProxyType(
+    dict(STDLIB) | dict(PUREPY)
+)

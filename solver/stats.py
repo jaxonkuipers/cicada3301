@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from collections import Counter
 from collections.abc import Sequence
+from numbers import Integral
 
 N = 29
 
@@ -32,17 +33,28 @@ def as_indices(text) -> Sequence[int]:
     -7.813189, and spelled through `gp.spell` they score -4.05, -4.54 and
     -7.81. Use `c.gp.spell(...)` at the edge.
 
-    The check is the first element only, O(1), because a full range scan costs
-    about as much as an `ioc` over the same text (0.229 ms against 0.243 ms on
-    the 12,956-rune stream) and these run inside sweep loops. Out-of-range
-    ints are NOT caught here; `cipher.apply_stream` guards its own skips.
+    Every element is checked. Python and NumPy integral scalars are accepted;
+    booleans and values outside the Gematria Primus alphabet are rejected.
+    A scorer is a decision boundary, so an invalid candidate must fail before
+    it can index a model table or receive an apparently meaningful score.
     """
     text = getattr(text, "indices", text)
-    if len(text) and not isinstance(text[0], int):
-        raise TypeError(
-            f"expected rune indices (ints in 0..{N - 1}), got "
-            f"{type(text[0]).__name__} -- spell Latin with c.gp.spell() first"
-        )
+    if not isinstance(text, Sequence):
+        # Validation iterates the whole input. Preserve one-shot iterables for
+        # the caller rather than returning them exhausted after a successful
+        # check (which otherwise turns a real stream into an empty result).
+        text = tuple(text)
+    for position, value in enumerate(text):
+        if isinstance(value, bool) or not isinstance(value, Integral):
+            raise TypeError(
+                f"expected rune indices (integral values in 0..{N - 1}), got "
+                f"{type(value).__name__} at position {position} -- spell Latin "
+                "with c.gp.spell() first"
+            )
+        if not 0 <= value < N:
+            raise ValueError(
+                f"rune index {value} at position {position} outside 0..{N - 1}"
+            )
     return text
 
 
@@ -157,6 +169,8 @@ def chi_squared(text: Sequence[int], reference: Sequence[float]) -> float:
 
 def ngrams(text: Sequence[int], n: int) -> Counter:
     text = as_indices(text)
+    if n < 1:
+        raise ValueError(f"n must be >= 1, got {n}")
     return Counter(tuple(text[i : i + n]) for i in range(len(text) - n + 1))
 
 
@@ -167,9 +181,10 @@ def find(haystack: Sequence[int], needle: Sequence[int]) -> list[int]:
     the correct answer to the wrong question, and as an attack primitive a
     silent full-length hit list reads as a discovery.
     """
-    if not needle:
-        raise ValueError("empty needle")
     haystack = as_indices(haystack)
+    needle = as_indices(needle)
+    if len(needle) == 0:
+        raise ValueError("empty needle")
     m, out = len(needle), []
     needle = tuple(needle)
     for i in range(len(haystack) - m + 1):

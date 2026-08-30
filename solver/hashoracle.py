@@ -40,8 +40,8 @@ agnostic and takes any bytes via `identify_bytes`.
 
 from __future__ import annotations
 
-import hashlib
-from collections.abc import Callable, Iterable
+import functools
+from collections.abc import Iterable, Mapping
 
 from solver import hashes512
 from solver.corpus import RuneText
@@ -52,9 +52,9 @@ from solver.corpus import RuneText
 # --------------------------------------------------------------------------
 
 # 11 functions, every one gated against a published vector or against hashlib
-# in tests/test_hashoracle.py. `hashes512` supplies the seven `hashlib`
-# does not ship. NOTHING enters this map ungated: a silently wrong hash turns a
-# negative result into a lie about coverage.
+# in tests/test_hashoracle.py. `hashes512` supplies the six pure-Python
+# functions `hashlib` does not ship. NOTHING enters this map ungated: a silently
+# wrong hash turns a negative result into a lie about coverage.
 #
 # `keccak512` is NOT `sha3_512`. SHA-3 was standardised in August 2015 and
 # changed Keccak's domain-separation padding from 0x01 to 0x06; LP2 was printed
@@ -66,19 +66,7 @@ from solver.corpus import RuneText
 # Whirlpool-0, Whirlpool-T -- each need a constant table that cannot be derived
 # from the spec, so no gate here would catch a transcription slip. Left out on
 # purpose rather than added unverified.
-HASHES: dict[str, Callable[[bytes], bytes]] = {
-    "sha512": lambda b: hashlib.sha512(b).digest(),
-    "sha3_512": lambda b: hashlib.sha3_512(b).digest(),
-    "blake2b": lambda b: hashlib.blake2b(b).digest(),
-    "shake_256": lambda b: hashlib.shake_256(b).digest(64),
-    "shake_128": lambda b: hashlib.shake_128(b).digest(64),
-    "keccak512": hashes512.keccak512,
-    "whirlpool": hashes512.whirlpool,
-    "blake512": hashes512.blake512,
-    "fnv512_0": hashes512.fnv512_0,
-    "fnv512_1": hashes512.fnv512_1,
-    "fnv512_1a": hashes512.fnv512_1a,
-}
+HASHES: Mapping[str, hashes512.HashFunction] = hashes512.ALL
 
 
 def page56_digest(c) -> str:
@@ -202,28 +190,26 @@ def identify_bytes(data: bytes, digest: str) -> str | None:
     return None
 
 
-_TABLE_CACHE: dict[tuple, dict[str, str]] = {}
+@functools.lru_cache(maxsize=64)
+def _digest_items(t: RuneText) -> tuple[tuple[str, str], ...]:
+    """Immutable cached digest rows for one structured rune text."""
+    return tuple(
+        (f"{ename}/{hname}", fn(data).hex())
+        for ename, data in encodings(t).items()
+        for hname, fn in HASHES.items()
+    )
 
 
 def digest_table(t: RuneText) -> dict[str, str]:
     """`{'encoding/hash': hexdigest}` over the whole family, memoised.
 
-    One call is `len(encodings(t)) * len(HASHES)` hashes, and seven of the
+    One call is `len(encodings(t)) * len(HASHES)` hashes, and six of the
     eleven functions are pure Python. A caller checking MANY digests against
     ONE candidate -- which is exactly what a planted-digest control does --
     must build this once rather than call `identify` per digest, or the work
     is quadratic in the family size.
     """
-    key = (t.indices, t.marks_after)
-    table = _TABLE_CACHE.get(key)
-    if table is None:
-        table = {
-            f"{ename}/{hname}": fn(data).hex()
-            for ename, data in encodings(t).items()
-            for hname, fn in HASHES.items()
-        }
-        _TABLE_CACHE[key] = table
-    return table
+    return dict(_digest_items(t))
 
 
 def identify(t: RuneText, digest: str) -> str | None:

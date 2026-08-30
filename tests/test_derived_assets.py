@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -13,8 +14,14 @@ from solver.cli import build_discord_db, build_english_model
 from solver.cli._git_source import SOURCE_COMMIT, GitSource
 from solver.paths import DISCORD_DB
 
+FULL_REBUILD = unittest.skipUnless(
+    os.environ.get("CICADA_REBUILD_DERIVED") == "1",
+    "set CICADA_REBUILD_DERIVED=1 for pinned-source rebuilds",
+)
+
 
 class TestSourceSnapshot(unittest.TestCase):
+    @FULL_REBUILD
     def test_pinned_commit_contains_every_archived_input(self):
         source = GitSource()
         self.assertEqual(source.commit, SOURCE_COMMIT)
@@ -37,6 +44,13 @@ class TestSourceSnapshot(unittest.TestCase):
 
 
 class TestEnglishModelBuilder(unittest.TestCase):
+    def test_committed_gzip_matches_pinned_digest(self):
+        self.assertEqual(
+            hashlib.sha256(build_english_model.OUTPUT.read_bytes()).hexdigest(),
+            build_english_model.EXPECTED_SHA256,
+        )
+
+    @FULL_REBUILD
     def test_builder_reproduces_committed_gzip_exactly(self):
         rebuilt = build_english_model.model_bytes()
         self.assertEqual(rebuilt, build_english_model.OUTPUT.read_bytes())
@@ -79,6 +93,11 @@ https://example.invalid/archive.png
             build_discord_db.build_database(first, exports=exports, expected=False)
             build_discord_db.build_database(second, exports=exports, expected=False)
             self.assertEqual(first.read_bytes(), second.read_bytes())
+            first.chmod(0o444)
+            try:
+                build_discord_db.verify_database(first, expected=False)
+            finally:
+                first.chmod(0o644)
             with contextlib.closing(sqlite3.connect(first)) as database:
                 row = database.execute(
                     "SELECT rowid FROM msg_fts WHERE msg_fts MATCH 'archive'"
@@ -118,13 +137,13 @@ https://example.invalid/archive.png
         self.assertEqual(counts, build_discord_db.EXPECTED_COUNTS)
         self.assertEqual(digests, build_discord_db.EXPECTED_LOGICAL_SHA256)
 
+    @FULL_REBUILD
     def test_builder_reproduces_the_pinned_source_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
             rebuilt = Path(temporary) / "discord.db"
             counts, digests = build_discord_db.build_database(rebuilt)
         self.assertEqual(counts, build_discord_db.EXPECTED_COUNTS)
         self.assertEqual(digests, build_discord_db.EXPECTED_LOGICAL_SHA256)
-
 
 if __name__ == "__main__":
     unittest.main()

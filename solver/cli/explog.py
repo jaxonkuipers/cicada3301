@@ -69,15 +69,18 @@ def route_ids() -> frozenset[str]:
     return routes
 
 
-def validate_route(value: str) -> str | None:
+def validate_route(
+    value: str, known_routes: frozenset[str] | None = None,
+) -> str | None:
     route = value.strip()
     if not route:
         return "a running claim needs --route"
-    try:
-        known = route_ids()
-    except ValueError as exc:
-        return str(exc)
-    if route not in known:
+    if known_routes is None:
+        try:
+            known_routes = route_ids()
+        except ValueError as exc:
+            return str(exc)
+    if route not in known_routes:
         return f"unknown route {route}; choose an id from corpus/route.csv"
     return None
 
@@ -131,19 +134,44 @@ def read_log(bad: list[str] | None = None) -> list[dict]:
     rows: list[tuple[str, int, dict]] = []
     serial = 0
     for path in log_paths():
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        display_path = _display_path(path)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            print(
+                f"warning: {display_path} is not valid UTF-8 at byte {exc.start}",
+                file=sys.stderr,
+            )
+            if bad is not None:
+                bad.append(display_path)
+            continue
+        except OSError as exc:
+            print(f"warning: cannot read {display_path}: {exc}", file=sys.stderr)
+            if bad is not None:
+                bad.append(display_path)
+            continue
+        for line_number, line in enumerate(text.splitlines(), 1):
             if not line.strip():
                 continue
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError as exc:
-                location = f"{path}:{line_number}"
+                location = f"{display_path}:{line_number}"
                 print(f"warning: {location} is not valid JSON: {exc}", file=sys.stderr)
                 if bad is not None:
                     bad.append(location)
                 continue
+            if not isinstance(entry, dict):
+                location = f"{display_path}:{line_number}"
+                print(
+                    f"warning: {location} is a JSON {type(entry).__name__}, expected object",
+                    file=sys.stderr,
+                )
+                if bad is not None:
+                    bad.append(location)
+                continue
             if "log_path" not in entry:
-                entry["log_path"] = _display_path(path)
+                entry["log_path"] = display_path
             rows.append((entry_time(entry), serial, entry))
             serial += 1
     rows.sort(key=lambda row: (row[0], row[1]))
@@ -160,16 +188,31 @@ def _display_path(path: Path) -> str:
 def current_wake_id(runner=subprocess.run) -> str:
     supplied = os.environ.get("CICADA_WAKE_ID", "").strip().casefold()
     if supplied:
-        return supplied if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,95}", supplied) else "local"
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,95}", supplied):
+            raise ValueError(
+                "invalid CICADA_WAKE_ID; use 1-96 lowercase letters, digits or hyphens"
+            )
+        return supplied
     try:
         result = runner(
             ["git", "branch", "--show-current"], cwd=ROOT, check=True,
             text=True, capture_output=True,
         )
-        branch = result.stdout.strip().removeprefix("wake/")
+        branch = result.stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        branch = "local"
-    return re.sub(r"[^a-z0-9-]+", "-", branch.casefold()).strip("-")[:96] or "local"
+        branch = ""
+    if branch.startswith("wake/"):
+        wake_id = re.sub(
+            r"[^a-z0-9-]+", "-", branch.removeprefix("wake/").casefold(),
+        ).strip("-")[:96]
+        if wake_id:
+            return wake_id
+    print(
+        "warning: using fallback Explog wake id 'local'; set CICADA_WAKE_ID "
+        "or use a managed wake worktree",
+        file=sys.stderr,
+    )
+    return "local"
 
 
 def write_log_path() -> tuple[Path, str]:
@@ -195,10 +238,12 @@ def locked(file):
 def resolved_ids(entries: list[dict]) -> set[int | str]:
     resolved: set[int | str] = set()
     for entry in entries:
-        values = entry.get("resolves") or []
-        if not isinstance(values, list):
-            values = [values]
-        resolved.update(values)
+        if entry.get("verdict") not in VERDICTS[1:]:
+            continue
+        target = entry.get("resolves")
+        if isinstance(target, (int, str)) and not isinstance(target, bool) \
+                and target not in (None, ""):
+            resolved.add(target)
     return resolved
 
 
@@ -211,45 +256,119 @@ def current(entries: list[dict]) -> list[dict]:
     ]
 
 
-def ledger_errors(entries: list[dict]) -> list[str]:
-    """Return lifecycle violations in chronological ledger order."""
+def lifecycle_errors(
+    entries: list[dict], *,
+    known_routes: frozenset[str] | None = None,
+    known_evidence: frozenset[str] | None = None,
+) -> list[str]:
+    """Return ID and resolution violations independent of display order."""
     errors: list[str] = []
+    routes_available = True
+    if known_routes is None:
+        try:
+            known_routes = route_ids()
+        except ValueError as exc:
+            if entries:
+                errors.append(str(exc))
+            known_routes = frozenset()
+            routes_available = False
     seen: dict[int | str, dict] = {}
-    active: set[int | str] = set()
     for entry in entries:
         entry_id = entry.get("id")
+        valid_id = (
+            isinstance(entry_id, int)
+            and not isinstance(entry_id, bool)
+            and entry_id > 0
+        ) or (
+            isinstance(entry_id, str)
+            and HANDLE.fullmatch(entry_id) is not None
+        )
+        if not valid_id:
+            errors.append(f"invalid Explog id {entry_id!r}")
+            continue
         if entry_id in seen:
             errors.append(f"duplicate Explog id {entry_id}")
             continue
-        if entry.get("verdict") == "running":
-            duplicate = next((
-                active_id for active_id in active
-                if normalized(seen[active_id].get("object"))
-                == normalized(entry.get("object"))
-                and normalized(seen[active_id].get("operation"))
-                == normalized(entry.get("operation"))
-            ), None)
-            if duplicate is not None:
+        verdict = entry.get("verdict")
+        if verdict not in VERDICTS:
+            errors.append(f"record {entry_id} has invalid verdict {verdict!r}")
+        elif verdict == "running":
+            missing = [
+                field for field in ("object", "operation", "decision")
+                if not str(entry.get(field, "")).strip()
+            ]
+            if missing:
                 errors.append(
-                    f"running claim {entry_id} duplicates active operation {duplicate}"
+                    f"running claim {entry_id} lacks " + ", ".join(missing)
                 )
-            seen[entry_id] = entry
-            active.add(entry_id)
-            continue
+            result_fields = [
+                field for field in ("coverage", "result", "evidence", "resolves")
+                if entry.get(field) not in (None, "", [], {})
+            ]
+            if result_fields:
+                errors.append(
+                    f"running claim {entry_id} contains result fields: "
+                    + ", ".join(result_fields)
+                )
+        else:
+            missing = [
+                field for field in ("coverage", "result")
+                if not str(entry.get(field, "")).strip()
+            ]
+            if missing:
+                errors.append(
+                    f"result {entry_id} lacks " + ", ".join(missing)
+                )
+            evidence = entry.get("evidence")
+            if not isinstance(evidence, list) or not evidence:
+                errors.append(f"result {entry_id} lacks evidence")
+            elif not all(isinstance(path, str) for path in evidence):
+                errors.append(f"result {entry_id} evidence must be a list of paths")
+            elif known_evidence is not None:
+                missing = [path for path in evidence if path not in known_evidence]
+                if missing:
+                    errors.append(
+                        f"result {entry_id} has evidence absent from the snapshot: "
+                        + ", ".join(missing)
+                    )
+            else:
+                canonical, evidence_error = validated_evidence(evidence)
+                if evidence_error:
+                    errors.append(f"result {entry_id} has invalid evidence: {evidence_error}")
+                elif canonical != evidence:
+                    errors.append(f"result {entry_id} evidence paths are not canonical")
+        if routes_available:
+            route_error = validate_route(
+                str(entry.get("route", "")), known_routes,
+            )
+            if route_error:
+                errors.append(f"record {entry_id} has invalid route: {route_error}")
+        seen[entry_id] = entry
 
+    closures: dict[int | str, int | str] = {}
+    for entry in entries:
+        if entry.get("verdict") == "running":
+            continue
+        entry_id = entry.get("id")
         target_id = entry.get("resolves")
-        if isinstance(target_id, list) or target_id in (None, ""):
+        if not isinstance(target_id, (int, str)) or isinstance(target_id, bool) \
+                or target_id == "":
             errors.append(f"result {entry_id} must resolve exactly one running ID")
         elif target_id not in seen:
-            errors.append(f"result {entry_id} has a forward or unknown reference to {target_id}")
+            errors.append(f"result {entry_id} has an unknown reference to {target_id}")
         else:
             target = seen[target_id]
             if target.get("verdict") != "running":
                 errors.append(f"result {entry_id} resolves non-running record {target_id}")
-            elif target_id not in active:
-                errors.append(f"result {entry_id} resolves already closed claim {target_id}")
             else:
-                active.remove(target_id)
+                previous = closures.get(target_id)
+                if previous is not None:
+                    errors.append(
+                        f"result {entry_id} resolves already closed claim {target_id} "
+                        f"(also resolved by {previous})"
+                    )
+                else:
+                    closures[target_id] = entry_id
             mismatched = [
                 field for field in INHERITED_FIELDS
                 if entry.get(field, "") != target.get(field, "")
@@ -259,8 +378,33 @@ def ledger_errors(entries: list[dict]) -> list[str]:
                     f"result {entry_id} differs from claim {target_id} in "
                     + ", ".join(mismatched)
                 )
-        seen[entry_id] = entry
     return errors
+
+
+def active_duplicate_errors(entries: list[dict]) -> list[str]:
+    """Return duplicate operation reservations remaining after all closures."""
+    errors: list[str] = []
+    reservations: dict[tuple[str, str], int | str] = {}
+    for entry in current(entries):
+        key = (normalized(entry.get("object")), normalized(entry.get("operation")))
+        previous = reservations.get(key)
+        if previous is not None:
+            errors.append(
+                f"running claim {entry.get('id')} duplicates active operation {previous}"
+            )
+        else:
+            reservations[key] = entry.get("id")
+    return errors
+
+
+def ledger_errors(entries: list[dict]) -> list[str]:
+    """Return hard lifecycle errors; reservation collisions are warnings."""
+    return lifecycle_errors(entries)
+
+
+def warn_active_duplicates(entries: list[dict]) -> None:
+    for warning in active_duplicate_errors(entries):
+        print(f"warning: {warning}", file=sys.stderr)
 
 
 def entries_by_id(entries: list[dict], ids: list[int | str]) -> list[dict]:
@@ -380,7 +524,7 @@ def _running_parser() -> argparse.ArgumentParser:
 
 def _query_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="explog", description="Search experiment records")
-    parser.add_argument("query")
+    parser.add_argument("query", nargs="+")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--json", action="store_true")
     return parser
@@ -441,6 +585,9 @@ def _validate_add(args: argparse.Namespace, entries: list[dict]) -> tuple[bool, 
     if not args.result.strip():
         print("a result needs --result", file=sys.stderr)
         return False, {}
+    if not args.evidence:
+        print("a result needs at least one --evidence path", file=sys.stderr)
+        return False, {}
     try:
         claim = entries_by_id(entries, [target_id])[0]
     except ValueError as exc:
@@ -485,10 +632,11 @@ def add(args: argparse.Namespace) -> int:
         if bad:
             print("refusing to append while log records are unreadable", file=sys.stderr)
             return 2
-        errors = ledger_errors(entries)
+        errors = lifecycle_errors(entries)
         if errors:
             print(f"refusing to append: {errors[0]}", file=sys.stderr)
             return 2
+        warn_active_duplicates(entries)
         valid, values = _validate_add(args, entries)
         if not valid:
             return 2
@@ -523,6 +671,33 @@ def _help() -> None:
     print(__doc__.strip())
 
 
+def _one_edit_apart(value: str, candidate: str) -> bool:
+    """Return whether one insertion, deletion or substitution separates words."""
+    if abs(len(value) - len(candidate)) > 1 or value == candidate:
+        return False
+    if len(value) == len(candidate):
+        return sum(left != right for left, right in zip(value, candidate, strict=True)) == 1
+    shorter, longer = (value, candidate) if len(value) < len(candidate) else (candidate, value)
+    short_index = long_index = differences = 0
+    while short_index < len(shorter) and long_index < len(longer):
+        if shorter[short_index] == longer[long_index]:
+            short_index += 1
+        else:
+            differences += 1
+            if differences > 1:
+                return False
+        long_index += 1
+    return True
+
+
+def _likely_command_typo(value: str) -> str | None:
+    token = value.casefold()
+    if not re.fullmatch(r"[a-z]+", token):
+        return None
+    return next((name for name in ("add", "show", "running")
+                 if _one_edit_apart(token, name)), None)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in {"-h", "--help"}:
@@ -532,7 +707,17 @@ def main(argv: list[str] | None = None) -> int:
         command = argv[0]
         if command == "add":
             return add(_add_parser().parse_args(argv[1:]))
-        entries = read_log()
+        typo = _likely_command_typo(command)
+        if typo:
+            raise ValueError(f"unknown command {command!r}; did you mean {typo!r}?")
+        bad: list[str] = []
+        entries = read_log(bad)
+        if bad:
+            raise ValueError("cannot use Explog while log records are unreadable")
+        errors = lifecycle_errors(entries)
+        if errors:
+            raise ValueError(f"invalid Explog ledger: {errors[0]}")
+        warn_active_duplicates(entries)
         if command == "show":
             args = _show_parser().parse_args(argv[1:])
             selected = entries_by_id(entries, args.ids)
@@ -554,10 +739,11 @@ def main(argv: list[str] | None = None) -> int:
         args = _query_parser().parse_args(argv)
         if args.limit < 1:
             raise ValueError("--limit must be positive")
-        matches, total = search_entries(entries, args.query, args.limit)
+        query = " ".join(args.query)
+        matches, total = search_entries(entries, query, args.limit)
         if args.json:
             json.dump(
-                match_payload(matches, total, args.query), sys.stdout,
+                match_payload(matches, total, query), sys.stdout,
                 ensure_ascii=False, indent=2,
             )
             print()

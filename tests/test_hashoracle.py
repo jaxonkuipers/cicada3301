@@ -14,6 +14,7 @@ test. They are:
 
 import unittest
 from datetime import UTC, datetime
+from unittest import mock
 
 from solver import corpus, hashes512, pgp
 from solver import hashoracle as ho
@@ -61,6 +62,43 @@ class TestOracleFires(unittest.TestCase):
     def test_coverage_matches_the_family_size(self):
         self.assertEqual(ho.coverage(PLAIN),
                          len(ho.encodings(PLAIN)) * len(ho.HASHES))
+
+    def test_hash_catalogue_has_one_source_of_truth(self):
+        self.assertIs(ho.HASHES, hashes512.ALL)
+        self.assertEqual(
+            dict(hashes512.ALL), dict(hashes512.STDLIB) | dict(hashes512.PUREPY)
+        )
+        self.assertFalse(hashes512.STDLIB.keys() & hashes512.PUREPY.keys())
+        self.assertEqual((len(hashes512.STDLIB), len(hashes512.PUREPY)), (5, 6))
+
+    def test_hash_catalogues_are_immutable_so_cached_coverage_cannot_drift(self):
+        for catalogue in (hashes512.STDLIB, hashes512.PUREPY, hashes512.ALL):
+            with self.assertRaises(TypeError):
+                catalogue["extra"] = lambda data: bytes(64)
+
+
+class TestDigestCache(unittest.TestCase):
+    def test_cache_is_bounded_lru_and_cached_tables_cannot_be_mutated(self):
+        self.assertGreater(len(PLAIN), 66)
+        ho._digest_items.cache_clear()
+        self.addCleanup(ho._digest_items.cache_clear)
+
+        fake_hashes = {"tiny": lambda data: (data + bytes(64))[:64]}
+        with mock.patch.object(ho, "HASHES", fake_hashes):
+            first = PLAIN[:1]
+            table = ho.digest_table(first)
+            table["poison"] = "bad"
+            self.assertNotIn("poison", ho.digest_table(first))
+            self.assertEqual(ho._digest_items.cache_info().hits, 1)
+
+            for start in range(1, 66):
+                ho.digest_table(PLAIN[start:start + 1])
+            info = ho._digest_items.cache_info()
+            self.assertEqual((info.maxsize, info.currsize), (64, 64))
+
+            misses = info.misses
+            ho.digest_table(first)
+            self.assertEqual(ho._digest_items.cache_info().misses, misses + 1)
 
 
 class TestOracleRejects(unittest.TestCase):
@@ -131,6 +169,19 @@ class TestCicadaSigningConvention(unittest.TestCase):
                if not pgp.verify_cleartext(m.raw, self.key).ok]
         self.assertEqual(bad, [])
 
+    def test_mutating_a_signed_body_invalidates_the_signature(self):
+        message = c.communication("2012-01-key-in-front-of-you")
+        mutated = message.raw.replace(
+            "The key has always been right",
+            "The key has never been right",
+            1,
+        )
+        self.assertEqual(
+            mutated.split(pgp._SIGSTART, 1)[1],
+            message.raw.split(pgp._SIGSTART, 1)[1],
+        )
+        self.assertFalse(pgp.verify_cleartext(mutated, self.key).ok)
+
     def test_manifest_signature_times_come_from_the_packets(self):
         for message in self.signed:
             signature = pgp.parse_signature(message.raw)
@@ -195,15 +246,10 @@ class TestXorShares(unittest.TestCase):
         self.assertIn(b"Interconnectedness", b[:64])
         self.assertIn(b"3301", b[:64])
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestHashFunctionsAreGated(unittest.TestCase):
-    """Published known answers for the seven functions `hashlib` does not ship.
+    """Published known answers for the six functions `hashlib` does not ship.
 
-    `hashoracle.HASHES` is 11 functions and seven of them are this repo's own
+    `hashoracle.HASHES` is 11 functions and six of them are this repo's own
     pure-Python code. An oracle that reports "no match over 704 pairs" is only
     worth something if every one of those 704 is the function it claims to be,
     so each is pinned to a vector this repo did not choose.
@@ -264,3 +310,7 @@ class TestHashFunctionsAreGated(unittest.TestCase):
         for name, fn in ho.HASHES.items():
             with self.subTest(hash=name):
                 self.assertEqual(len(fn(b"cicada")), 64)
+
+
+if __name__ == "__main__":
+    unittest.main()

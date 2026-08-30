@@ -296,7 +296,8 @@ def verify_search_indexes(database: sqlite3.Connection) -> None:
 def verify_database(
     path: Path, *, expected: bool = True
 ) -> tuple[dict[str, int], dict[str, str]]:
-    with closing(sqlite3.connect(path)) as database:
+    uri = f"{path.resolve().as_uri()}?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as database:
         if database.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise RuntimeError(f"SQLite quick_check failed for {path}")
         columns = [row[1] for row in database.execute("PRAGMA table_info(msg_fts)")]
@@ -312,8 +313,15 @@ def verify_database(
             raise RuntimeError(f"logical row counts differ: {counts!r}")
         if expected and digests != EXPECTED_LOGICAL_SHA256:
             raise RuntimeError(f"logical row digests differ: {digests!r}")
-        for table in ("msg_fts", "rune_fts"):
-            database.execute(f"INSERT INTO {table}({table}) VALUES ('integrity-check')")
+        # FTS5 exposes its deepest integrity check through an INSERT control
+        # command. Keep the source database genuinely read-only and run that
+        # command against an in-memory backup instead.
+        with closing(sqlite3.connect(":memory:")) as writable:
+            database.backup(writable)
+            for table in ("msg_fts", "rune_fts"):
+                writable.execute(
+                    f"INSERT INTO {table}({table}) VALUES ('integrity-check')"
+                )
     return counts, digests
 
 

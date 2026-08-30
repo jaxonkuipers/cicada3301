@@ -27,15 +27,34 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterable, Iterator
+from numbers import Integral
+
+from solver.stats import as_indices
 
 N = 29
 
 
 def _norm_key(key: Iterable[int]) -> list[int]:
-    k = [i % N for i in key]
+    k = list(as_indices(list(key)))
     if not k:
         raise ValueError("empty key")
     return k
+
+
+def _checked_text_and_skips(
+    text: Iterable[int], skips: Iterable[int],
+) -> tuple[list[int], frozenset[int]]:
+    values = list(as_indices(list(text)))
+    positions = list(skips)
+    if any(isinstance(i, bool) or not isinstance(i, Integral) for i in positions):
+        raise TypeError("skip positions must be integral values")
+    checked = frozenset(int(i) for i in positions)
+    stray = {i for i in checked if not 0 <= i < len(values)}
+    if stray:
+        raise ValueError(
+            f"skips outside 0..{len(values) - 1}: {sorted(stray)[:5]}"
+        )
+    return values, checked
 
 
 # --------------------------------------------------------------------------
@@ -56,15 +75,7 @@ def apply_stream(
     interrupter behaviour. The stream may be any iterator (a repeated keyword,
     phi of the primes, another text).
     """
-    text = list(text)
-    stray = {i for i in skips if not 0 <= i < len(text)}
-    if stray:
-        # Skip sets are search state; a position outside the text is a bug in
-        # whatever generated it, and silently ignoring it makes an attack
-        # report coverage it did not have.
-        raise ValueError(
-            f"skips outside 0..{len(text) - 1}: {sorted(stray)[:5]}"
-        )
+    text, skips = _checked_text_and_skips(text, skips)
     out = []
     for i, x in enumerate(text):
         if i in skips:
@@ -77,15 +88,24 @@ def apply_stream(
             # a bare StopIteration here reads as an empty iterator to the
             # caller (and becomes a RuntimeError inside a generator).
             raise ValueError(f"keystream exhausted at position {i}") from None
-        out.append(op(x, k) % N)
+        if isinstance(k, bool) or not isinstance(k, Integral):
+            raise TypeError(f"keystream yielded non-integral {type(k).__name__}")
+        value = op(x, k)
+        if isinstance(value, bool) or not isinstance(value, Integral):
+            raise TypeError(f"cipher operation returned non-integral {type(value).__name__}")
+        out.append(int(value) % N)
     return out
 
 
 def repeat(key: Iterable[int]) -> Iterator[int]:
     """keyword -> endless keystream."""
     k = _norm_key(key)
-    while True:
-        yield from k
+
+    def cycling() -> Iterator[int]:
+        while True:
+            yield from k
+
+    return cycling()
 
 
 _PRIMES: list[int] = []
@@ -149,18 +169,26 @@ def phi_primes() -> Iterator[int]:
 
 
 def shift_decrypt(ct: Iterable[int], k: int, skips=frozenset()) -> list[int]:
-    return [x if i in skips else (x - k) % N for i, x in enumerate(ct)]
+    if isinstance(k, bool) or not isinstance(k, Integral):
+        raise TypeError("shift must be an integral value")
+    ct, skips = _checked_text_and_skips(ct, skips)
+    return [x if i in skips else (x - int(k)) % N for i, x in enumerate(ct)]
 
 
 def atbash(text: Iterable[int], skips=frozenset()) -> list[int]:
     """Alphabet inversion i -> 28-i. Self-inverse; section 0.0's cipher."""
+    text, skips = _checked_text_and_skips(text, skips)
     return [x if i in skips else (N - 1 - x) % N for i, x in enumerate(text)]
 
 
 def affine_decrypt(ct: Iterable[int], a: int, b: int, skips=frozenset()) -> list[int]:
     """Invert c = a*p + b. 29 is prime, so any a in 1..28 works."""
+    if any(isinstance(value, bool) or not isinstance(value, Integral) for value in (a, b)):
+        raise TypeError("affine parameters must be integral values")
+    a, b = int(a), int(b)
     if a % N == 0:
         raise ValueError(f"affine multiplier a={a} is 0 mod {N}; use 1..{N - 1}")
+    ct, skips = _checked_text_and_skips(ct, skips)
     inv = pow(a, -1, N)
     return [x if i in skips else ((x - b) * inv) % N for i, x in enumerate(ct)]
 
@@ -178,6 +206,9 @@ def vigenere_decrypt(ct, key, skips=frozenset()) -> list[int]:
 def vigenere_encrypt(pt, key, interrupter: int | None = 0) -> list[int]:
     """c = p + k, with the measured interrupter rule: a plaintext rune equal
     to `interrupter` passes through and the key holds. None disables."""
+    pt = list(as_indices(pt))
+    if interrupter is not None:
+        interrupter = as_indices([interrupter])[0]
     stream = repeat(key)
     out = []
     for x in pt:
@@ -200,7 +231,10 @@ def variant_beaufort_decrypt(ct, key, skips=frozenset()) -> list[int]:
 
 def running_key_decrypt(ct, stream: Iterable[int], skips=frozenset()) -> list[int]:
     """p = c - s for an arbitrary keystream (phi_primes(), another text...)."""
-    return apply_stream(ct, iter(i % N for i in stream), lambda x, k: x - k, skips)
+    # apply_stream reduces the operation result modulo N after validating the
+    # raw stream value. Reducing here first converts bool to int and bypasses
+    # that validation.
+    return apply_stream(ct, iter(stream), lambda x, k: x - k, skips)
 
 
 # --------------------------------------------------------------------------
@@ -218,6 +252,7 @@ def autokey_pt_decrypt(ct, key, skips=frozenset()) -> list[int]:
     it. Different plaintext, and no solved section decides between them. A
     sweep with non-empty `skips` has covered (a) only; say so in `coverage`.
     """
+    ct, skips = _checked_text_and_skips(ct, skips)
     k = _norm_key(key)
     stream = list(k)
     out, used = [], 0
@@ -242,7 +277,7 @@ def autokey_ct_decrypt(ct, key, skips=frozenset()) -> list[int]:
     once as the text. Every primitive here takes an Iterable, so a generator
     or a map() must not come out as an empty decryption.
     """
-    ct = list(ct)
+    ct, skips = _checked_text_and_skips(ct, skips)
     k = _norm_key(key)
     stream = iter(k + [x for i, x in enumerate(ct) if i not in skips])
     return apply_stream(ct, stream, lambda x, s: x - s, skips)

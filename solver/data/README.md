@@ -20,4 +20,6 @@ Pinned model facts:
 
 `discord.db` indexes 109,917 messages from 13 Liber Primus community channels spanning 2019–2026. [`build_discord_db.py`](../cli/build_discord_db.py) recreates and checks it from the exports retained in source commit `71b0eba`.
 
+The ordinary unit suite verifies both committed asset digests, the database schema, search-index parity, logical rows and a deterministic fixture build. Run both full source-snapshot reconstructions explicitly with `CICADA_REBUILD_DERIVED=1 python3 -m unittest tests.test_derived_assets`.
+
 Both builders require a Git clone containing source commit `71b0eba`. A shallow clone can recover it with `git fetch --unshallow origin`; source archives require a full Git clone.

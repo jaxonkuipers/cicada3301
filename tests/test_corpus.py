@@ -5,9 +5,12 @@ the parser or the transcription changed and derived results are suspect.
 Run: python3 -m unittest discover -s tests
 """
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
-from solver import cipher, corpus, fitness, stats
+from solver import cipher, corpus, fitness, pgp, stats
 
 c = corpus.load()
 
@@ -179,6 +182,16 @@ class TestCommunications(unittest.TestCase):
         self.assertTrue(k.body.startswith("The key has always been right"))
         self.assertEqual(k.date, "2012-01")
 
+    def test_whitespace_separators_do_not_expose_armor_headers(self):
+        for message_id in (
+            "2012-01-patience-check-back",
+            "2012-01-location-numbers",
+        ):
+            message = c.communication(message_id)
+            self.assertIn("Hash: SHA1\n \n", message.raw)
+            self.assertNotIn("Hash:", message.body)
+            self.assertEqual(message.body, pgp.clearsigned_body(message.raw))
+
     def test_book_code_coordinates_survive(self):
         b = c.communication("2012-01-twenty-nine-volumes-book-code")
         self.assertIn("twenty-nine volumes", b.lines[0])
@@ -201,7 +214,16 @@ class TestCommunications(unittest.TestCase):
         m = c.communication("2013-01-rune-table-morse")
         self.assertEqual(len(m.body), corpus.EXPECTED_MORSE_CHARS)
         self.assertEqual(set(m.body), {"\t", "\n", " "})
+        self.assertTrue(m.body.startswith("\n"))
         self.assertEqual(len(m.lines), 4)
+
+    def test_communication_files_are_strict_utf8(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "invalid.asc"
+            path.write_bytes(b"\xff")
+            with mock.patch.object(corpus, "CORPUS", Path(temporary)):
+                with self.assertRaises(UnicodeDecodeError):
+                    corpus._read_communication({"path": path.name})
 
     def test_files_without_an_envelope_still_read(self):
         for cid in ("2014-01-fallen-behind-outguess-08", "cicada-3301-public-key"):

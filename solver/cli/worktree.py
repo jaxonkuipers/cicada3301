@@ -48,14 +48,31 @@ def _output(runner, args: list[str], *, cwd: Path) -> str:
     return _run(runner, args, cwd=cwd, capture=True).stdout.strip()
 
 
+def _failure_detail(result) -> str:
+    return (getattr(result, "stderr", "") or getattr(result, "stdout", "") or "").strip()
+
+
 def create(name: str, *, parent: Path | None = None,
            base: str = "origin/main", stamp: str | None = None,
            runner=subprocess.run) -> tuple[Path, str, str]:
     """Fetch the selected base and create a uniquely identified solver wake."""
     name = validate_name(name)
     _run(runner, ["git", "config", "core.hooksPath", ".githooks"], cwd=ROOT)
-    _run(runner, ["git", "fetch", "origin", "main"], cwd=ROOT)
-    base_sha = _output(runner, ["git", "rev-parse", base], cwd=ROOT)
+    fetched = _run(
+        runner, ["git", "fetch", "origin", "main"], cwd=ROOT,
+        check=False, capture=True,
+    )
+    if fetched.returncode != 0:
+        detail = _failure_detail(fetched) or "git fetch returned no diagnostic"
+        raise WorktreeError(f"cannot fetch origin/main: {detail}")
+    resolved = _run(
+        runner, ["git", "rev-parse", base], cwd=ROOT,
+        check=False, capture=True,
+    )
+    if resolved.returncode != 0:
+        detail = _failure_detail(resolved) or "git rev-parse returned no diagnostic"
+        raise WorktreeError(f"cannot resolve wake base {base!r}: {detail}")
+    base_sha = resolved.stdout.strip()
     stamp = stamp or dt.datetime.now(dt.UTC).strftime("%Y%m%d-%H%M%S")
     wake_id = f"{name}-{stamp}"
     parent = parent or Path(os.environ.get("TMPDIR", "/tmp")) / "cicada-wakes"
@@ -112,7 +129,34 @@ def publish(*, root: Path = ROOT, retries: int = 3,
 
     for attempt in range(1, retries + 1):
         _run(runner, ["git", "fetch", "origin", "main"], cwd=root)
-        _run(runner, ["git", "rebase", "origin/main"], cwd=root)
+        rebased = _run(
+            runner, ["git", "rebase", "origin/main"], cwd=root,
+            check=False, capture=True,
+        )
+        if rebased.returncode != 0:
+            conflict_result = _run(
+                runner,
+                ["git", "diff", "--name-only", "--diff-filter=U"],
+                cwd=root, check=False, capture=True,
+            )
+            conflicts = [
+                line.strip() for line in conflict_result.stdout.splitlines()
+                if line.strip()
+            ]
+            aborted = _run(
+                runner, ["git", "rebase", "--abort"], cwd=root,
+                check=False, capture=True,
+            )
+            if aborted.returncode != 0:
+                detail = _failure_detail(aborted) or "git rebase --abort failed"
+                raise WorktreeError(
+                    f"rebase onto origin/main failed and could not be aborted: {detail}"
+                )
+            detail = f"; conflicting paths: {', '.join(conflicts)}" if conflicts else ""
+            raise WorktreeError(
+                f"rebase onto origin/main failed and was aborted; "
+                f"branch {branch} remains resumable{detail}"
+            )
         pushed = _run(
             runner,
             ["git", "push", "origin", "HEAD:main"],

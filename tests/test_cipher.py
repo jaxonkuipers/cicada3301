@@ -143,6 +143,10 @@ class TestPrimitives(unittest.TestCase):
             self.assertEqual(fn((x for x in ct), key), want, fn.__name__)
             self.assertEqual(fn(map(int, ct), key), want, fn.__name__)
 
+        want = cipher.vigenere_encrypt(ct, key)
+        self.assertEqual(cipher.vigenere_encrypt((x for x in ct), key), want)
+        self.assertEqual(cipher.vigenere_encrypt(map(int, ct), key), want)
+
     def test_autokey_ct_skips_hold_the_keystream(self):
         # Encrypt with the measured interrupter rule (plaintext F passes
         # through, keystream holds), then decrypt with those positions skipped.
@@ -251,12 +255,43 @@ class TestPrimitives(unittest.TestCase):
         self.assertEqual(cipher.vigenere_decrypt([1, 2, 3], [1], skips={2}),
                          [0, 1, 3])
 
+    def test_every_monoalphabetic_primitive_validates_skip_positions(self):
+        calls = (
+            lambda skips: cipher.shift_decrypt([1, 2, 3], 1, skips),
+            lambda skips: cipher.atbash([1, 2, 3], skips),
+            lambda skips: cipher.affine_decrypt([1, 2, 3], 7, 11, skips),
+        )
+        for call in calls:
+            for skips, error in (({-1}, ValueError), ({3}, ValueError), ({True}, TypeError),
+                                 ({1.5}, TypeError)):
+                with self.assertRaises(error, msg=(call, skips)):
+                    call(skips)
+
+    def test_cipher_inputs_and_rune_keys_use_shared_index_validation(self):
+        for decrypt in (
+            lambda text: cipher.shift_decrypt(text, 1),
+            cipher.atbash,
+            lambda text: cipher.affine_decrypt(text, 7, 11),
+            lambda text: cipher.vigenere_decrypt(text, [1]),
+        ):
+            with self.assertRaises(ValueError, msg=decrypt):
+                decrypt([1, 29, 2])
+        with self.assertRaises(ValueError):
+            cipher.vigenere_decrypt([1, 2, 3], [29])
+        with self.assertRaises(ValueError):
+            cipher.vigenere_decrypt([0], [29], skips={0})
+
     def test_short_running_key_raises_clearly(self):
         # A key text shorter than the ciphertext used to escape as a bare
         # StopIteration, which reads as an empty iterator to the caller.
         with self.assertRaises(ValueError) as cm:
             cipher.running_key_decrypt([1, 2, 3, 4, 5], [1, 2])
         self.assertIn("exhausted", str(cm.exception))
+
+    def test_running_key_rejects_boolean_stream_values(self):
+        for value in (False, True):
+            with self.assertRaises(TypeError):
+                cipher.running_key_decrypt([1], [value])
 
     def test_skips_hold_keystream(self):
         # positions in skips pass through and do not consume the key

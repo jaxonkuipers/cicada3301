@@ -124,6 +124,25 @@ def require_schema(db: sqlite3.Connection) -> None:
         )
 
 
+def require_channel(db: sqlite3.Connection, channel: str | None) -> None:
+    """Reject a misspelled channel before an empty result can look meaningful."""
+    if not channel:
+        return
+    found = db.execute(
+        "SELECT 1 FROM messages WHERE channel = ? LIMIT 1", (channel,)
+    ).fetchone()
+    if found:
+        return
+    channels = [
+        row[0]
+        for row in db.execute(
+            "SELECT DISTINCT channel FROM messages ORDER BY channel"
+        )
+    ]
+    choices = ", ".join(channels)
+    raise die(f"unknown Discord channel {channel!r}; available: {choices}")
+
+
 def hit_from_row(row: sqlite3.Row, note: str = "") -> Hit:
     keys = set(row.keys())
     return Hit(
@@ -419,6 +438,7 @@ def main(argv: list[str] | None = None) -> int:
                     render_show(conversations, selected)
                 return 0
 
+            require_channel(db, args.channel)
             hits, searched, total = (
                 search_runes(db, args) if args.runes else search_text(db, args)
             )
@@ -433,6 +453,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
+    except sqlite3.Error as exc:
+        print(f"cannot read discord.db: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

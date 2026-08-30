@@ -14,7 +14,8 @@ This file contains compact facts required to interpret the preserved route and c
 
 - Liber Primus contains 15 indexed sections across 75 images: 17 introduction images and 58 body images.
 - Eight sections remain unsolved: `0.5` through `0.12`, totaling 12,956 runes.
-- The accepted solved text contains 2,901 runes and is reproduced exactly by `python3 -m solver.corpus`.
+- The accepted solved sections contain 2,977 runes: 2,901 are sentence-aligned English and 76 form the section `0.1` word square.
+- `python3 -m solver.corpus` reproduces and verifies the complete solved rune streams.
 - Typed punctuation and illustrations are represented separately from the rune stream.
 - The section labels and boundaries are corpus indexing conventions; no authenticated instruction assigns one cipher per section.
 

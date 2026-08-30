@@ -1,46 +1,69 @@
-"""Mechanical checks for the current research record."""
+"""Mechanical checks for committed Explog data and its lifecycle contract."""
 
-import collections
+import csv
 import json
+import subprocess
 import unittest
 
 from solver.cli import explog
 from solver.paths import ROOT
 
 
-class ExperimentLogIntegrity(unittest.TestCase):
-    def test_all_records_parse_and_handles_are_unique(self):
-        bad = []
-        entries = explog.read_log(bad)
-        self.assertFalse(bad)
-        handles = [str(entry.get("id")) for entry in entries]
-        self.assertTrue(all(explog.HANDLE.fullmatch(handle) for handle in handles))
-        duplicates = [
-            handle for handle, count in collections.Counter(handles).items()
-            if count > 1
-        ]
-        self.assertFalse(duplicates)
+class CommittedExplogIntegrity(unittest.TestCase):
+    """Validate HEAD without observing another wake's uncommitted shards."""
 
-    def test_shard_entries_name_their_source_file(self):
-        for path in explog.log_paths():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
+    def test_committed_shards_parse_and_follow_the_lifecycle(self):
+        listed = subprocess.run(
+            [
+                "git", "ls-tree", "-r", "--name-only", "HEAD",
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        committed_paths = frozenset(listed.stdout.splitlines())
+        paths = sorted(
+            path for path in committed_paths
+            if path.startswith("research/explog/") and path.endswith(".jsonl")
+        )
+        entries = []
+        for path in paths:
+            source = subprocess.run(
+                ["git", "show", f"HEAD:{path}"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+            ).stdout
+            try:
+                text = source.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                self.fail(f"{path} is not valid UTF-8 at byte {exc.start}")
+            for line_number, line in enumerate(text.splitlines(), 1):
+                if not line.strip():
+                    continue
+                try:
                     entry = json.loads(line)
-                    self.assertEqual(entry.get("log_path"), str(path.relative_to(ROOT)))
-
-    def test_records_follow_the_small_lifecycle(self):
-        entries = explog.read_log()
-        self.assertFalse(explog.ledger_errors(entries))
-        for entry in entries:
-            self.assertIn(entry.get("verdict"), explog.VERDICTS)
-            if entry.get("verdict") == "running":
-                self.assertTrue(entry.get("object"))
-                self.assertTrue(entry.get("operation"))
-                self.assertTrue(entry.get("decision"))
-            else:
-                self.assertTrue(entry.get("coverage"))
-                self.assertTrue(entry.get("result"))
-                self.assertIsNotNone(entry.get("resolves"))
+                except json.JSONDecodeError as exc:
+                    self.fail(f"{path}:{line_number} is not valid JSON: {exc}")
+                self.assertIsInstance(entry, dict, f"{path}:{line_number}")
+                self.assertEqual(entry.get("log_path"), path, f"{path}:{line_number}")
+                entries.append(entry)
+        route_source = subprocess.run(
+            ["git", "show", "HEAD:corpus/route.csv"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        routes = frozenset(
+            row["route"] for row in csv.DictReader(route_source)
+        )
+        self.assertFalse(explog.lifecycle_errors(
+            entries,
+            known_routes=routes,
+            known_evidence=committed_paths,
+        ))
 
 
 class ExplogLifecycleIntegrity(unittest.TestCase):
@@ -65,13 +88,69 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
             "resolves": target,
             "coverage": "all selected cells",
             "result": "no relation",
+            "evidence": ["research/SETTLED.md"],
         }
         entry.update(changes)
         return entry
 
-    def test_forward_reference_is_rejected(self):
-        errors = explog.ledger_errors([self.result(), self.claim()])
-        self.assertTrue(any("forward or unknown" in error for error in errors))
+    def test_resolution_is_id_based_not_created_or_merged_order(self):
+        self.assertFalse(explog.ledger_errors([self.result(), self.claim()]))
+        other_claim = {
+            **self.claim(3), "object": "OBJECT", "operation": "OPERATION",
+        }
+        other_result = self.result(entry_id=4, target=3, object="OBJECT",
+                                   operation="OPERATION")
+        entries = [other_result, self.result(), other_claim, self.claim()]
+        self.assertFalse(explog.ledger_errors(entries))
+        self.assertFalse(explog.current(entries))
+
+    def test_unknown_resolution_is_rejected(self):
+        errors = explog.ledger_errors([self.result(target=999), self.claim()])
+        self.assertTrue(any("unknown reference" in error for error in errors))
+
+    def test_duplicate_ids_are_rejected(self):
+        errors = explog.ledger_errors([self.claim(), self.claim()])
+        self.assertTrue(any("duplicate Explog id" in error for error in errors))
+
+    def test_record_shape_is_part_of_the_lifecycle_contract(self):
+        for change, phrase in (
+            ({"id": "bad id"}, "invalid Explog id"),
+            ({"verdict": "maybe"}, "invalid verdict"),
+            ({"object": ""}, "lacks object"),
+        ):
+            errors = explog.ledger_errors([{**self.claim(), **change}])
+            self.assertTrue(any(phrase in error for error in errors), errors)
+        errors = explog.ledger_errors([
+            self.claim(), self.result(evidence=[]),
+        ])
+        self.assertTrue(any("lacks evidence" in error for error in errors), errors)
+        errors = explog.ledger_errors([
+            {**self.claim(), "resolves": "other:1"},
+        ])
+        self.assertTrue(any("contains result fields" in error for error in errors), errors)
+        errors = explog.ledger_errors([
+            {**self.claim(), "route": "R99.9"},
+        ])
+        self.assertTrue(any("unknown route" in error for error in errors), errors)
+        errors = explog.ledger_errors([
+            self.claim(), self.result(evidence=["research/missing.md"]),
+        ])
+        self.assertTrue(any("invalid evidence" in error for error in errors), errors)
+
+    def test_snapshot_validation_uses_snapshot_routes_and_files(self):
+        entries = [self.claim(), self.result()]
+        self.assertFalse(explog.lifecycle_errors(
+            entries,
+            known_routes=frozenset({"R14.7"}),
+            known_evidence=frozenset({"research/SETTLED.md"}),
+        ))
+        errors = explog.lifecycle_errors(
+            entries,
+            known_routes=frozenset({"R12.1"}),
+            known_evidence=frozenset(),
+        )
+        self.assertTrue(any("unknown route" in error for error in errors), errors)
+        self.assertTrue(any("absent from the snapshot" in error for error in errors), errors)
 
     def test_a_claim_can_be_closed_only_once(self):
         errors = explog.ledger_errors([
@@ -99,8 +178,9 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
             "object": "OBJECT",
             "operation": "operation",
         }
-        errors = explog.ledger_errors([self.claim(), duplicate])
+        errors = explog.active_duplicate_errors([self.claim(), duplicate])
         self.assertTrue(any("duplicates active operation" in error for error in errors))
+        self.assertFalse(explog.ledger_errors([self.claim(), duplicate]))
 
         closed_then_reopened = [
             self.claim(), self.result(), {**duplicate, "id": 3},

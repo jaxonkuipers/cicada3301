@@ -47,11 +47,16 @@ class TestExplog(unittest.TestCase):
         return code, output.getvalue(), error.getvalue()
 
     def close(self, entry_id=1, verdict="negative", **fields):
+        evidence = fields.pop(
+            "evidence", "research/campaigns/test/FINDINGS.md",
+        )
         args = [
             "add", "--verdict", verdict, "--resolves", str(entry_id),
             "--coverage", fields.pop("coverage", "all 256 offsets and two controls"),
             "--result", fields.pop("result", "zero hits; the selected relation fails"),
         ]
+        if evidence is not None:
+            args.extend(("--evidence", str(evidence)))
         for name, value in fields.items():
             args.extend((f"--{name.replace('_', '-')}", str(value)))
         return self.call(args)
@@ -106,9 +111,13 @@ class TestExplog(unittest.TestCase):
             code, _, error = self.call([
                 "add", "--verdict", "negative", "--resolves", "999",
                 "--coverage", "all cells", "--result", "failed",
+                "--evidence", "research/campaigns/test/FINDINGS.md",
             ])
             self.assertEqual(code, 2)
             self.assertIn("unknown Explog ids", error)
+            code, _, error = self.close(evidence=None)
+            self.assertEqual(code, 2)
+            self.assertIn("at least one --evidence", error)
 
     def test_result_inherits_claim_and_releases_lock(self):
         with self.log() as path:
@@ -156,6 +165,36 @@ class TestExplog(unittest.TestCase):
             code, _, error = self.call(self.running("page-56", "hash exact body"))
         self.assertEqual(code, 2)
         self.assertIn("already reserved", error)
+
+    def test_merged_duplicate_locks_do_not_block_other_writes_or_resolution(self):
+        with self.log() as path:
+            claims = [
+                {
+                    "id": entry_id,
+                    "created_at": f"2026-08-29T00:00:0{entry_id}+00:00",
+                    "verdict": "running",
+                    "campaign": f"campaign-{entry_id}",
+                    "route": "R14.7",
+                    "object": "same object",
+                    "operation": "same operation",
+                    "decision": "decision",
+                }
+                for entry_id in (1, 2)
+            ]
+            path.write_text(
+                "".join(json.dumps(entry) + "\n" for entry in claims),
+                encoding="utf-8",
+            )
+            self.assertTrue(explog.active_duplicate_errors(explog.read_log()))
+            code, _, warning = self.call(self.running("other", "other operation"))
+            self.assertEqual(code, 0)
+            self.assertIn("warning: running claim 2 duplicates", warning)
+            self.assertEqual(self.close(entry_id=1)[0], 0)
+            self.assertEqual(self.close(entry_id=2)[0], 0)
+            self.assertFalse(explog.ledger_errors(explog.read_log()))
+            self.assertEqual(
+                [entry["id"] for entry in explog.current(explog.read_log())], [3],
+            )
 
     def test_result_has_one_target_and_cannot_override_claim_identity(self):
         with self.log() as path:
@@ -219,6 +258,17 @@ class TestExplog(unittest.TestCase):
             self.assertEqual(self.call(["--limit", "0", "anything"])[0], 2)
             self.assertEqual(self.call(["---"])[0], 2)
 
+    def test_likely_command_typo_errors_but_multiword_query_works(self):
+        with self.log():
+            code, _, error = self.call(["runing"])
+            self.assertEqual(code, 2)
+            self.assertIn("did you mean 'running'", error)
+            self.assertEqual(self.call(self.running())[0], 0)
+            self.assertEqual(self.close(result="cobalt zero")[0], 0)
+            code, output, _ = self.call(["cobalt", "zero"])
+            self.assertEqual(code, 0)
+            self.assertIn("#2 [negative]", output)
+
     def test_corrupt_log_blocks_append(self):
         with self.log() as path:
             self.assertEqual(self.call(self.running())[0], 0)
@@ -227,6 +277,20 @@ class TestExplog(unittest.TestCase):
             code, _, error = self.call(self.running("other", "other operation"))
         self.assertEqual(code, 2)
         self.assertIn("refusing to append", error)
+
+    def test_non_object_and_invalid_utf8_rows_have_file_diagnostics(self):
+        with self.log() as path:
+            path.write_text("[]\n", encoding="utf-8")
+            code, _, error = self.call(["running"])
+            self.assertEqual(code, 2)
+            self.assertIn("research/local.jsonl:1", error)
+            self.assertIn("expected object", error)
+
+            path.write_bytes(b"\xff\n")
+            code, _, error = self.call(["running"])
+            self.assertEqual(code, 2)
+            self.assertIn("research/local.jsonl", error)
+            self.assertIn("not valid UTF-8", error)
 
     def test_concurrent_claims_receive_unique_ids(self):
         if explog.fcntl is None:
@@ -264,6 +328,32 @@ class TestExplog(unittest.TestCase):
             entry = json.loads((shards / "test-wake.jsonl").read_text())
             self.assertEqual(entry["id"], "test-wake:1")
             self.assertEqual(entry["log_path"], "research/explog/test-wake.jsonl")
+
+    def test_invalid_wake_id_errors_and_unmanaged_fallback_warns(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shards = root / "research" / "explog"
+            shards.parent.mkdir()
+            (root / "corpus").mkdir()
+            (root / "corpus" / "route.csv").write_text(
+                "route,round\nR14.7,2014\n", encoding="utf-8",
+            )
+            with mock.patch.multiple(
+                explog, ROOT=root, LOG=shards, SHARD_DIR=shards,
+            ), mock.patch.dict(
+                os.environ, {"CICADA_WAKE_ID": "bad_wake"}, clear=True,
+            ):
+                code, _, error = self.call(self.running())
+            self.assertEqual(code, 2)
+            self.assertIn("invalid CICADA_WAKE_ID", error)
+            self.assertFalse(shards.exists())
+
+        runner = mock.Mock(return_value=mock.Mock(stdout="main\n"))
+        error = io.StringIO()
+        with mock.patch.dict(os.environ, {}, clear=True), \
+             contextlib.redirect_stderr(error):
+            self.assertEqual(explog.current_wake_id(runner), "local")
+        self.assertIn("fallback Explog wake id", error.getvalue())
 
 
 if __name__ == "__main__":

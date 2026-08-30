@@ -21,6 +21,8 @@ a9319a47ca33729251f52bb6f163987146ba59b30746ae094c45f78107f5cbd4  corpus/records
 a617b66840fda5d2165be55101bb5be1d30122d968e375ee6608d3d2c533634c  corpus/records/R13.4/artifacts/communications/2013-01-knock-on-the-sky.asc
 13645961e2642811500677f1a08d537e3c38f8c28764229b9d93480965c1c78c  corpus/records/R13.4/artifacts/communications/2013-01-onion-pointer.asc
 58dff034fdeb23b8f7da1fcdc8542bab6411d13c410146e09b861dc9253c0bcc  corpus/records/R13.4/artifacts/communications/2013-01-telnet-hello.asc
+86da8c77205c893ecdf6deb1559024fba58867c8a7a4bc5ccd631635a20ae9eb  corpus/records/R13.5/artifacts/shares.txt
+55ad73810fa4997c4ca63b463987ea12588a5a79908f02bba5ddd3a8515ff84b  corpus/records/R13.6/artifacts/protocol.txt
 cba64781bd461b17039316ef97426f912aae987fde131f62e883f7f9e9f0118e  corpus/records/R14.1/artifacts/communications/2014-01-opening-book-code.asc
 65ff60bfa019e424ce2ae23994f19af5692f7e12e6bc177830b42a154985defd  corpus/records/R14.1/artifacts/communications/2014-01-rsa-oaep-challenge.asc
 da4ad19d7e46a9df54fe800bb2477914fbb7b83d34e4ea748760ce2e0902e656  corpus/records/R14.2/artifacts/communications/2014-01-liber-primus-hash-block-outguess-01.asc
