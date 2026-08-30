@@ -341,6 +341,85 @@ class TestWorktree(unittest.TestCase):
         self.assertIn(["git", "rebase", "--abort"], calls)
         self.assertNotIn(["git", "push", "origin", "HEAD:main"], calls)
 
+    def _binding_runner(self, state_text, calls=None):
+        def runner(args, **kwargs):
+            if calls is not None:
+                calls.append(args)
+            if args == ["git", "branch", "--show-current"]:
+                return self.result("wake/cicada-1-20260828\n")
+            if args[:3] == ["git", "config", "--get"]:
+                return self.result("cicada-1-20260828\n")
+            if args == ["git", "status", "--porcelain"]:
+                return self.result("")
+            if args == ["git", "diff", "--name-only", "origin/main...HEAD"]:
+                return self.result(
+                    "AGENTS.md\nresearch/campaigns/x/STATE.md\n"
+                    "research/campaigns/x/FINDINGS.md\n"
+                )
+            if args == ["git", "show", "HEAD:research/campaigns/x/STATE.md"]:
+                return self.result(state_text)
+            if args == ["git", "rev-parse", "HEAD"]:
+                return self.result("deadbeef\n")
+            return self.result()
+        return runner
+
+    def test_publish_refuses_campaign_state_bound_to_another_wake(self):
+        calls = []
+        runner = self._binding_runner(
+            "# X campaign state\n\nManaged wake: other-20260101-000000\n", calls,
+        )
+        with self.assertRaisesRegex(
+            worktree.WorktreeError,
+            "STATE.md names wake other-20260101-000000; this wake is cicada-1-20260828",
+        ):
+            worktree.publish(root=Path("/wake"), runner=runner)
+        self.assertNotIn(["git", "rebase", "origin/main"], calls)
+        self.assertNotIn(["git", "push", "origin", "HEAD:main"], calls)
+
+    def test_publish_refuses_campaign_state_without_a_binding(self):
+        runner = self._binding_runner("# X campaign state\n\nno binding here\n")
+        with self.assertRaisesRegex(
+            worktree.WorktreeError, "does not name a managed wake.*cicada-1-20260828",
+        ):
+            worktree.publish(root=Path("/wake"), runner=runner)
+
+    def test_publish_accepts_campaign_state_bound_to_this_wake(self):
+        calls = []
+        runner = self._binding_runner(
+            "# X campaign state\n\nManaged wake: cicada-1-20260828\n", calls,
+        )
+        wake_id, commit = worktree.publish(root=Path("/wake"), runner=runner)
+        self.assertEqual((wake_id, commit), ("cicada-1-20260828", "deadbeef"))
+        self.assertIn(["git", "push", "origin", "HEAD:main"], calls)
+
+    def test_list_reports_managed_wakes_and_bound_campaigns(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            wake_path = Path(temporary) / "cicada-1-20260828"
+            state = wake_path / "research" / "campaigns" / "x" / "STATE.md"
+            state.parent.mkdir(parents=True)
+            state.write_text(
+                "# X campaign state\n\nManaged wake: cicada-1-20260828\n",
+                encoding="utf-8",
+            )
+            porcelain = (
+                f"worktree {temporary}/main\nHEAD 1111111\nbranch refs/heads/main\n\n"
+                f"worktree {wake_path}\nHEAD 2222222\n"
+                "branch refs/heads/wake/cicada-1-20260828\n\n"
+            )
+
+            def runner(args, **kwargs):
+                if args == ["git", "worktree", "list", "--porcelain"]:
+                    return self.result(porcelain)
+                if args[:3] == ["git", "config", "--get"]:
+                    return self.result("cicada-1-20260828\n")
+                return self.result()
+
+            wakes = worktree.list_wakes(root=Path(temporary), runner=runner)
+        self.assertEqual(len(wakes), 1)
+        self.assertEqual(wakes[0]["wake"], "cicada-1-20260828")
+        self.assertEqual(wakes[0]["path"], str(wake_path))
+        self.assertEqual(wakes[0]["campaigns"], "x")
+
     def test_publish_retries_when_remote_advances(self):
         pushes = 0
 

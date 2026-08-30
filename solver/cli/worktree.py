@@ -1,10 +1,13 @@
 """Create and publish isolated solver wakes.
 
     python3 -m solver.cli.worktree create cicada-1
+    python3 -m solver.cli.worktree list
     python3 -m solver.cli.worktree publish
 
 Creation starts from the fetched ``origin/main`` commit and records wake
-metadata on the unique branch. Publication rebases a clean, committed wake and
+metadata on the unique branch. A campaign binds itself to its wake with the
+line ``Managed wake: NAME-STAMP`` in its ``STATE.md``. Publication rebases a
+clean, committed wake, refuses campaign state that names another wake, and
 pushes its HEAD to ``main`` through the repository's pre-push verification.
 """
 
@@ -20,6 +23,8 @@ from pathlib import Path
 from solver.paths import ROOT
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
+STATE_BINDING = re.compile(r"^Managed wake: (\S+)[ \t]*$", re.MULTILINE)
+CAMPAIGN_STATE = re.compile(r"^research/campaigns/[^/]+/STATE\.md$")
 
 
 class WorktreeError(RuntimeError):
@@ -116,6 +121,73 @@ def _managed_wake(root: Path, runner=subprocess.run) -> tuple[str, str]:
     return branch, wake_id
 
 
+def _check_campaign_bindings(root: Path, wake_id: str, runner) -> None:
+    """Refuse campaign state that this wake changed but another wake owns."""
+    changed = _output(
+        runner, ["git", "diff", "--name-only", "origin/main...HEAD"], cwd=root,
+    )
+    for path in (line.strip() for line in changed.splitlines()):
+        if not CAMPAIGN_STATE.fullmatch(path):
+            continue
+        shown = _run(
+            runner, ["git", "show", f"HEAD:{path}"], cwd=root,
+            check=False, capture=True,
+        )
+        if shown.returncode != 0:
+            continue  # the wake deleted this campaign
+        match = STATE_BINDING.search(shown.stdout)
+        if match is None:
+            raise WorktreeError(
+                f"{path} does not name a managed wake; add the line "
+                f"'Managed wake: {wake_id}' under its title"
+            )
+        if match.group(1) != wake_id:
+            raise WorktreeError(
+                f"{path} names wake {match.group(1)}; this wake is {wake_id}"
+            )
+
+
+def bound_campaigns(path: Path, wake_id: str) -> list[str]:
+    """Campaign directories under ``path`` whose STATE.md names ``wake_id``."""
+    names = []
+    for state in sorted(path.glob("research/campaigns/*/STATE.md")):
+        try:
+            text = state.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        match = STATE_BINDING.search(text)
+        if match is not None and match.group(1) == wake_id:
+            names.append(state.parent.name)
+    return names
+
+
+def list_wakes(*, root: Path = ROOT, runner=subprocess.run) -> list[dict[str, str]]:
+    """Managed wakes registered with this repository and their campaigns."""
+    porcelain = _output(runner, ["git", "worktree", "list", "--porcelain"], cwd=root)
+    wakes = []
+    for block in porcelain.split("\n\n"):
+        fields = dict(
+            line.split(" ", 1) for line in block.splitlines() if " " in line
+        )
+        branch = fields.get("branch", "").removeprefix("refs/heads/")
+        if not branch.startswith("wake/"):
+            continue
+        result = _run(
+            runner, ["git", "config", "--get", f"branch.{branch}.cicadaWake"],
+            cwd=root, check=False, capture=True,
+        )
+        wake_id = result.stdout.strip() if result.returncode == 0 else ""
+        path = fields.get("worktree", "")
+        wakes.append({
+            "wake": wake_id or branch.removeprefix("wake/"),
+            "branch": branch,
+            "path": path,
+            "head": fields.get("HEAD", ""),
+            "campaigns": ", ".join(bound_campaigns(Path(path), wake_id)) or "-",
+        })
+    return wakes
+
+
 def publish(*, root: Path = ROOT, retries: int = 3,
             runner=subprocess.run) -> tuple[str, str]:
     """Rebase and publish one clean committed wake to origin/main."""
@@ -126,6 +198,8 @@ def publish(*, root: Path = ROOT, retries: int = 3,
     dirty = _output(runner, ["git", "status", "--porcelain"], cwd=root)
     if dirty:
         raise WorktreeError("commit the wake before publication")
+    _run(runner, ["git", "fetch", "origin", "main"], cwd=root)
+    _check_campaign_bindings(root, wake_id, runner)
 
     for attempt in range(1, retries + 1):
         _run(runner, ["git", "fetch", "origin", "main"], cwd=root)
@@ -196,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     create_parser.add_argument("name", help="short wake or automation name")
     create_parser.add_argument("--base", default="origin/main")
     create_parser.add_argument("--parent", type=Path)
+    sub.add_parser("list", help="show managed wakes and their bound campaigns")
     publish_parser = sub.add_parser("publish", help="rebase and publish this wake")
     publish_parser.add_argument("--retries", type=int, default=3)
     args = parser.parse_args(argv)
@@ -210,7 +285,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"branch: {branch}")
             print(f"base: {base_sha}")
             print(f"continue in: {path}")
+            print(f"state line: Managed wake: {path.name}")
             print("publish committed checkpoints with: python3 -m solver.cli.worktree publish")
+        elif args.command == "list":
+            wakes = list_wakes()
+            if not wakes:
+                print("no managed wakes")
+            for wake in wakes:
+                print(
+                    f"{wake['wake']}  {wake['path']}  {wake['head'][:12]}  "
+                    f"campaigns: {wake['campaigns']}"
+                )
         else:
             wake_id, commit = publish(retries=args.retries)
             print(f"published {wake_id} at {commit} to origin/main")
