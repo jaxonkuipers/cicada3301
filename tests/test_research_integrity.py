@@ -87,7 +87,7 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
             "resolves": target,
             "coverage": "all selected cells",
             "result": "no relation",
-            "evidence": ["research/SETTLED.md"],
+            "evidence": ["research/README.md"],
         }
         entry.update(changes)
         return entry
@@ -144,7 +144,7 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
         self.assertFalse(explog.reference_warnings(
             entries,
             known_routes=frozenset({"R14.7"}),
-            known_evidence=frozenset({"research/SETTLED.md"}),
+            known_evidence=frozenset({"research/README.md"}),
         ))
         errors = explog.reference_warnings(
             entries,

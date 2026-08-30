@@ -24,8 +24,8 @@ Use local files and public sources. Never initiate authentication, enter credent
 
 ## Durable state
 
-The corpus route map leads to one compact record and its owned evidence. `research/SETTLED.md` contains constraints shared by several campaigns. `discord.db` preserves retrospective community discussion. Explog stores active reservations and exact experiment conclusions.
+The corpus route map leads to one compact record and its owned evidence. `discord.db` preserves retrospective community discussion. Explog stores active reservations and exact experiment conclusions.
 
-A campaign directory contains compact `STATE.md`, concise `FINDINGS.md`, reusable scripts and gitignored `out/`. Add a conclusion to `SETTLED.md` when several campaigns need it. Update a route record when chronology or preservation evidence changes. Give every positive result to a fresh-context reviewer for prior-art, post-selection, instrument and cheaper-alternative objections.
+A campaign directory contains compact `STATE.md`, concise `FINDINGS.md`, reusable scripts and gitignored `out/`. Put historical conclusions in their route record, mechanical invariants in code and tests, and experiment conclusions in campaign findings and Explog. Give every positive result to a fresh-context reviewer for prior-art, post-selection, instrument and cheaper-alternative objections.
 
 Verify checkpoints with `python3 -m solver.corpus`, `python3 -m unittest discover -s tests` and `ruff check solver tests`. Use corpus objects through `solver.corpus`, rune arithmetic through `c.gp`, `solver.runes` and `solver.cipher`, and accepted plaintext through `solutions/`. Write Markdown prose as one physical line per semantic paragraph.

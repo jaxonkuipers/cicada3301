@@ -6,7 +6,6 @@
 | `campaigns/<name>/FINDINGS.md` | evidence, exact coverage and conclusions |
 | `campaigns/<name>/*.py` | reusable reconstruction and experiment code |
 | `explog/*.jsonl` | active operation locks and closed results by wake |
-| `SETTLED.md` | conclusions that constrain several campaigns |
 
 ## Retrieve prior work
 
