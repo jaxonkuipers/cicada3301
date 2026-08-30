@@ -1,7 +1,8 @@
 """Cipher primitives over Z/29, the Gematria Primus alphabet.
 
-Everything takes and returns rune indices, never runes or Latin: convert at
-the edges with `c.gp`. Section keys and boundaries live in sections.csv.
+Ciphertext and plaintext are rune indices, never runes or Latin: convert at
+the edges with `c.gp`. Numeric key material is integral and reduced modulo 29.
+Section keys and boundaries live in sections.csv.
 
 PROVEN rune-exact against the solved sections, from the keys sections.csv
 records (tests/test_cipher.py): `atbash` (0.0), `shift_decrypt` (0.2),
@@ -35,7 +36,11 @@ N = 29
 
 
 def _norm_key(key: Iterable[int]) -> list[int]:
-    k = list(as_indices(list(key)))
+    values = list(key)
+    if any(isinstance(value, bool) or not isinstance(value, Integral)
+           for value in values):
+        raise TypeError("key values must be integral")
+    k = [int(value) % N for value in values]
     if not k:
         raise ValueError("empty key")
     return k
@@ -44,7 +49,8 @@ def _norm_key(key: Iterable[int]) -> list[int]:
 def _checked_text_and_skips(
     text: Iterable[int], skips: Iterable[int],
 ) -> tuple[list[int], frozenset[int]]:
-    values = list(as_indices(list(text)))
+    values = list(text)
+    as_indices(values)
     positions = list(skips)
     if any(isinstance(i, bool) or not isinstance(i, Integral) for i in positions):
         raise TypeError("skip positions must be integral values")
@@ -77,6 +83,7 @@ def apply_stream(
     """
     text, skips = _checked_text_and_skips(text, skips)
     out = []
+    operation_validated = False
     for i, x in enumerate(text):
         if i in skips:
             out.append(x)
@@ -88,12 +95,16 @@ def apply_stream(
             # a bare StopIteration here reads as an empty iterator to the
             # caller (and becomes a RuntimeError inside a generator).
             raise ValueError(f"keystream exhausted at position {i}") from None
-        if isinstance(k, bool) or not isinstance(k, Integral):
-            raise TypeError(f"keystream yielded non-integral {type(k).__name__}")
         value = op(x, k)
-        if isinstance(value, bool) or not isinstance(value, Integral):
-            raise TypeError(f"cipher operation returned non-integral {type(value).__name__}")
-        out.append(int(value) % N)
+        if not operation_validated:
+            if isinstance(k, bool) or not isinstance(k, Integral):
+                raise TypeError(f"keystream yielded non-integral {type(k).__name__}")
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise TypeError(
+                    f"cipher operation returned non-integral {type(value).__name__}"
+                )
+            operation_validated = True
+        out.append(value % N)
     return out
 
 

@@ -181,8 +181,8 @@ def _subpackets(area: bytes) -> list[tuple[int, bytes]]:
     return out
 
 
-_CLEAR = "-----BEGIN PGP SIGNED MESSAGE-----"
-_SIGSTART = "-----BEGIN PGP SIGNATURE-----"
+CLEARSIGNED_BEGIN = "-----BEGIN PGP SIGNED MESSAGE-----"
+SIGNATURE_BEGIN = "-----BEGIN PGP SIGNATURE-----"
 
 
 def clearsigned_body(raw: str) -> str:
@@ -197,10 +197,10 @@ def clearsigned_body(raw: str) -> str:
     clearsign framework and is removed. Every other body byte represented by
     the decoded string, including leading and trailing whitespace, is kept.
     """
-    marker = raw.find(_CLEAR)
+    marker = raw.find(CLEARSIGNED_BEGIN)
     if marker < 0:
-        raise KeyError("no PGP SIGNED MESSAGE block")
-    cursor = marker + len(_CLEAR)
+        raise ValueError("no PGP SIGNED MESSAGE block")
+    cursor = marker + len(CLEARSIGNED_BEGIN)
     if raw.startswith("\r\n", cursor):
         cursor += 2
     elif raw.startswith("\n", cursor):
@@ -223,10 +223,10 @@ def clearsigned_body(raw: str) -> str:
         raise ValueError(f"unexpected clearsign header line: {line!r}")
 
     signature = re.search(
-        rf"(?m)^{re.escape(_SIGSTART)}\r?$", raw[cursor:]
+        rf"(?m)^{re.escape(SIGNATURE_BEGIN)}\r?$", raw[cursor:]
     )
     if signature is None:
-        raise KeyError("no PGP SIGNATURE block")
+        raise ValueError("no PGP SIGNATURE block")
     body = raw[cursor:cursor + signature.start()]
     if body.endswith("\r\n"):
         return body[:-2]

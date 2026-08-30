@@ -138,6 +138,20 @@ class TestExplog(unittest.TestCase):
             _, output, _ = self.call(["running"])
             self.assertEqual(output, "no entries\n")
 
+    def test_administrative_blocked_release_needs_no_evidence(self):
+        with self.log() as path:
+            self.assertEqual(self.call(self.running())[0], 0)
+            code, _, error = self.close(
+                verdict="blocked",
+                coverage="no cells; campaign ended by user",
+                result="administrative release",
+                evidence=None,
+            )
+            self.assertEqual(code, 0, error)
+            result = json.loads(path.read_text().splitlines()[-1])
+            self.assertNotIn("evidence", result)
+            self.assertFalse(explog.current(explog.read_log()))
+
     def test_result_evidence_must_be_a_file_inside_the_repository(self):
         with self.log() as path:
             root = path.parents[1]
@@ -281,16 +295,63 @@ class TestExplog(unittest.TestCase):
     def test_non_object_and_invalid_utf8_rows_have_file_diagnostics(self):
         with self.log() as path:
             path.write_text("[]\n", encoding="utf-8")
-            code, _, error = self.call(["running"])
-            self.assertEqual(code, 2)
+            code, output, error = self.call(["running"])
+            self.assertEqual(code, 0)
+            self.assertEqual(output, "no entries\n")
             self.assertIn("research/local.jsonl:1", error)
             self.assertIn("expected object", error)
+            self.assertIn("showing readable records", error)
 
             path.write_bytes(b"\xff\n")
-            code, _, error = self.call(["running"])
-            self.assertEqual(code, 2)
+            code, output, error = self.call(["running"])
+            self.assertEqual(code, 0)
+            self.assertEqual(output, "no entries\n")
             self.assertIn("research/local.jsonl", error)
             self.assertIn("not valid UTF-8", error)
+            self.assertIn("showing readable records", error)
+
+    def test_reference_drift_warns_without_disabling_reads_or_unrelated_adds(self):
+        with self.log() as path:
+            self.assertEqual(self.call(self.running())[0], 0)
+            self.assertEqual(self.close()[0], 0)
+            root = path.parents[1]
+            (root / "research" / "campaigns" / "test" / "FINDINGS.md").unlink()
+            (root / "corpus" / "route.csv").write_text(
+                "route,round\nR12.1,2012\n", encoding="utf-8",
+            )
+
+            code, output, warning = self.call(["show", "2"])
+            self.assertEqual(code, 0)
+            self.assertIn("zero hits", output)
+            self.assertIn("stale route", warning)
+            self.assertIn("stale evidence", warning)
+
+            args = self.running("other object", "other operation")
+            args[args.index("--route") + 1] = "R12.1"
+            code, _, warning = self.call(args)
+            self.assertEqual(code, 0)
+            self.assertIn("stale route", warning)
+            self.assertIn("stale evidence", warning)
+
+    def test_structural_drift_warns_on_reads_and_blocks_append(self):
+        with self.log() as path:
+            path.write_text(
+                json.dumps({
+                    "id": 1,
+                    "created_at": "2026-08-29T00:00:00+00:00",
+                    "verdict": "maybe",
+                    "route": "R14.7",
+                }) + "\n",
+                encoding="utf-8",
+            )
+            code, output, warning = self.call(["running"])
+            self.assertEqual(code, 0)
+            self.assertEqual(output, "no entries\n")
+            self.assertIn("invalid Explog ledger", warning)
+
+            code, _, error = self.call(self.running("other", "other operation"))
+            self.assertEqual(code, 2)
+            self.assertIn("refusing to append", error)
 
     def test_concurrent_claims_receive_unique_ids(self):
         if explog.fcntl is None:

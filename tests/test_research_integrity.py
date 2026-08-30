@@ -59,10 +59,9 @@ class CommittedExplogIntegrity(unittest.TestCase):
         routes = frozenset(
             row["route"] for row in csv.DictReader(route_source)
         )
-        self.assertFalse(explog.lifecycle_errors(
-            entries,
-            known_routes=routes,
-            known_evidence=committed_paths,
+        self.assertFalse(explog.lifecycle_errors(entries))
+        self.assertFalse(explog.reference_warnings(
+            entries, known_routes=routes, known_evidence=committed_paths,
         ))
 
 
@@ -128,23 +127,26 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
             {**self.claim(), "resolves": "other:1"},
         ])
         self.assertTrue(any("contains result fields" in error for error in errors), errors)
-        errors = explog.ledger_errors([
-            {**self.claim(), "route": "R99.9"},
-        ])
+        errors = explog.reference_warnings(
+            [{**self.claim(), "route": "R99.9"}],
+            known_routes=frozenset({"R14.7"}),
+        )
         self.assertTrue(any("unknown route" in error for error in errors), errors)
-        errors = explog.ledger_errors([
-            self.claim(), self.result(evidence=["research/missing.md"]),
-        ])
-        self.assertTrue(any("invalid evidence" in error for error in errors), errors)
+        errors = explog.reference_warnings(
+            [self.claim(), self.result(evidence=["research/missing.md"])],
+            known_routes=frozenset({"R14.7"}),
+            known_evidence=frozenset(),
+        )
+        self.assertTrue(any("absent from the snapshot" in error for error in errors), errors)
 
     def test_snapshot_validation_uses_snapshot_routes_and_files(self):
         entries = [self.claim(), self.result()]
-        self.assertFalse(explog.lifecycle_errors(
+        self.assertFalse(explog.reference_warnings(
             entries,
             known_routes=frozenset({"R14.7"}),
             known_evidence=frozenset({"research/SETTLED.md"}),
         ))
-        errors = explog.lifecycle_errors(
+        errors = explog.reference_warnings(
             entries,
             known_routes=frozenset({"R12.1"}),
             known_evidence=frozenset(),

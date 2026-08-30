@@ -36,7 +36,7 @@ Close the operation with `negative`, `positive` or `blocked`:
 python3 -m solver.cli.explog add --verdict VERDICT --resolves ID --coverage "EXACT CELLS TESTED" --result "OBSERVATION AND IMPLICATION" --evidence research/campaigns/NAME/FINDINGS.md
 ```
 
-When a campaign is ended administratively, release its reservation with `blocked`, coverage `no cells; campaign ended by user`, and a result naming the administrative release. A later campaign may reserve that operation again.
+When a campaign is ended administratively, release its reservation with `blocked`, coverage `no cells; campaign ended by user`, and a result naming the administrative release. This release needs no evidence file. A later campaign may reserve that operation again.
 
 Run campaign code from the repository root with `PYTHONPATH=. python3 research/campaigns/<name>/script.py`. Store generated files under the campaign's `out/` directory.
 

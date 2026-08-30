@@ -12,7 +12,7 @@ Give the candidate mechanisms to a separate archive-review subagent. It searches
 
 Select operations through artifact causality and the historical state they could recover or change. Publish a running reservation before sustained computation. Reconstruct the relevant websites, services, requests, carriers, diagrams or instruments and test coherent alternatives and controls. Continue across scheduled runs while an in-scope discriminator can answer the campaign's causal question.
 
-At each boundary, replace `STATE.md` with current state and put durable measurements and resolved mechanisms in `FINDINGS.md`. Close each reservation with exact coverage, result and evidence. A blocker names the unavailable evidence, affected discriminators and recovery that would reopen them.
+At each boundary, replace `STATE.md` with current state and put durable measurements and resolved mechanisms in `FINDINGS.md`. Close each reservation with exact coverage and result; evidence-backed results cite their evidence. A blocker names the unavailable evidence, affected discriminators and recovery that would reopen them.
 
 ## Historical reasoning
 

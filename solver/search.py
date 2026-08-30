@@ -255,9 +255,21 @@ def _layer_table(
     phase_period: int | None,
     ciphertext: Sequence[int],
 ) -> LayerTable:
-    return LayerTable(
-        tuple(tuple(row) for row in rows), phase_period, tuple(ciphertext)
+    """Build from rows whose generators already reduce every cell modulo 29.
+
+    The public ``LayerTable`` constructor validates arbitrary caller-supplied
+    rows. Repeating that scan over every internally generated phase made the
+    principal layer sweep materially slower without adding a new invariant.
+    """
+    normalized = tuple(tuple(row) for row in rows)
+    table = object.__new__(LayerTable)
+    object.__setattr__(table, "rows", normalized)
+    object.__setattr__(table, "phase_period", phase_period)
+    object.__setattr__(table, "ciphertext", tuple(ciphertext))
+    object.__setattr__(
+        table, "cums", tuple(tuple(_cum_validated(row)) for row in normalized)
     )
+    return table
 
 
 def _validate_layers(layers: LayerTable, text_length: int, candidate_count: int) -> None:
@@ -443,12 +455,17 @@ def layers_repeating(ct: Sequence[int], key: Sequence[int], op,
                      maxphase: int | None = None) -> LayerTable:
     """Rows for a repeating key: phase = skips mod len(key).
 
+    Key values are numeric material and are reduced modulo 29.
     ``maxphase`` can cap construction at the largest absolute skip count a
     caller needs. A cap below the key length produces finite, non-wrapping
     support; building all key-length rows enables legitimate cyclic wrap.
     """
     ct = list(stats.as_indices(ct))
-    k = list(stats.as_indices(key))
+    raw_key = list(key)
+    if any(isinstance(value, bool) or not isinstance(value, Integral)
+           for value in raw_key):
+        raise TypeError("key values must be integral")
+    k = [int(value) % N for value in raw_key]
     if not k:
         raise ValueError("empty key")
     if maxphase is not None:

@@ -256,22 +256,9 @@ def current(entries: list[dict]) -> list[dict]:
     ]
 
 
-def lifecycle_errors(
-    entries: list[dict], *,
-    known_routes: frozenset[str] | None = None,
-    known_evidence: frozenset[str] | None = None,
-) -> list[str]:
-    """Return ID and resolution violations independent of display order."""
+def lifecycle_errors(entries: list[dict]) -> list[str]:
+    """Return immutable record-shape and resolution violations."""
     errors: list[str] = []
-    routes_available = True
-    if known_routes is None:
-        try:
-            known_routes = route_ids()
-        except ValueError as exc:
-            if entries:
-                errors.append(str(exc))
-            known_routes = frozenset()
-            routes_available = False
     seen: dict[int | str, dict] = {}
     for entry in entries:
         entry_id = entry.get("id")
@@ -294,7 +281,7 @@ def lifecycle_errors(
             errors.append(f"record {entry_id} has invalid verdict {verdict!r}")
         elif verdict == "running":
             missing = [
-                field for field in ("object", "operation", "decision")
+                field for field in ("route", "object", "operation", "decision")
                 if not str(entry.get(field, "")).strip()
             ]
             if missing:
@@ -320,29 +307,15 @@ def lifecycle_errors(
                     f"result {entry_id} lacks " + ", ".join(missing)
                 )
             evidence = entry.get("evidence")
-            if not isinstance(evidence, list) or not evidence:
+            if verdict in {"negative", "positive"} \
+                    and (not isinstance(evidence, list) or not evidence):
                 errors.append(f"result {entry_id} lacks evidence")
-            elif not all(isinstance(path, str) for path in evidence):
+            elif evidence not in (None, []) and not isinstance(evidence, list):
                 errors.append(f"result {entry_id} evidence must be a list of paths")
-            elif known_evidence is not None:
-                missing = [path for path in evidence if path not in known_evidence]
-                if missing:
-                    errors.append(
-                        f"result {entry_id} has evidence absent from the snapshot: "
-                        + ", ".join(missing)
-                    )
-            else:
-                canonical, evidence_error = validated_evidence(evidence)
-                if evidence_error:
-                    errors.append(f"result {entry_id} has invalid evidence: {evidence_error}")
-                elif canonical != evidence:
-                    errors.append(f"result {entry_id} evidence paths are not canonical")
-        if routes_available:
-            route_error = validate_route(
-                str(entry.get("route", "")), known_routes,
-            )
-            if route_error:
-                errors.append(f"record {entry_id} has invalid route: {route_error}")
+            elif isinstance(evidence, list) and not all(
+                isinstance(path, str) and path for path in evidence
+            ):
+                errors.append(f"result {entry_id} evidence must be a list of paths")
         seen[entry_id] = entry
 
     closures: dict[int | str, int | str] = {}
@@ -381,6 +354,48 @@ def lifecycle_errors(
     return errors
 
 
+def reference_warnings(
+    entries: list[dict], *,
+    known_routes: frozenset[str] | None = None,
+    known_evidence: frozenset[str] | None = None,
+) -> list[str]:
+    """Report mutable route/evidence references without disabling Explog."""
+    warnings: list[str] = []
+    routes_available = True
+    if known_routes is None:
+        try:
+            known_routes = route_ids()
+        except ValueError as exc:
+            warnings.append(str(exc))
+            known_routes = frozenset()
+            routes_available = False
+    for entry in entries:
+        entry_id = entry.get("id")
+        if routes_available:
+            route_error = validate_route(str(entry.get("route", "")), known_routes)
+            if route_error:
+                warnings.append(f"record {entry_id} has stale route: {route_error}")
+        evidence = entry.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            continue
+        if known_evidence is not None:
+            missing = [path for path in evidence if path not in known_evidence]
+            if missing:
+                warnings.append(
+                    f"result {entry_id} has evidence absent from the snapshot: "
+                    + ", ".join(map(str, missing))
+                )
+            continue
+        if not all(isinstance(path, str) for path in evidence):
+            continue
+        canonical, evidence_error = validated_evidence(evidence)
+        if evidence_error:
+            warnings.append(f"result {entry_id} has stale evidence: {evidence_error}")
+        elif canonical != evidence:
+            warnings.append(f"result {entry_id} evidence paths are not canonical")
+    return warnings
+
+
 def active_duplicate_errors(entries: list[dict]) -> list[str]:
     """Return duplicate operation reservations remaining after all closures."""
     errors: list[str] = []
@@ -404,6 +419,11 @@ def ledger_errors(entries: list[dict]) -> list[str]:
 
 def warn_active_duplicates(entries: list[dict]) -> None:
     for warning in active_duplicate_errors(entries):
+        print(f"warning: {warning}", file=sys.stderr)
+
+
+def warn_reference_drift(entries: list[dict]) -> None:
+    for warning in reference_warnings(entries):
         print(f"warning: {warning}", file=sys.stderr)
 
 
@@ -585,7 +605,7 @@ def _validate_add(args: argparse.Namespace, entries: list[dict]) -> tuple[bool, 
     if not args.result.strip():
         print("a result needs --result", file=sys.stderr)
         return False, {}
-    if not args.evidence:
+    if args.verdict != "blocked" and not args.evidence:
         print("a result needs at least one --evidence path", file=sys.stderr)
         return False, {}
     try:
@@ -600,15 +620,13 @@ def _validate_add(args: argparse.Namespace, entries: list[dict]) -> tuple[bool, 
     if target_id not in active_ids:
         print(f"claim already resolved: {target_id}", file=sys.stderr)
         return False, {}
-    route_error = validate_route(str(claim.get("route", "")))
-    if route_error:
-        print(f"claim #{target_id} has invalid route: {route_error}", file=sys.stderr)
-        return False, {}
-    evidence, evidence_error = validated_evidence(args.evidence)
-    if evidence_error:
-        print(evidence_error, file=sys.stderr)
-        return False, {}
-    return True, {
+    evidence: list[str] = []
+    if args.evidence:
+        evidence, evidence_error = validated_evidence(args.evidence)
+        if evidence_error:
+            print(evidence_error, file=sys.stderr)
+            return False, {}
+    values = {
         "campaign": claim.get("campaign") or current_wake_id(),
         "route": claim.get("route", ""),
         "object": claim.get("object", ""),
@@ -616,9 +634,11 @@ def _validate_add(args: argparse.Namespace, entries: list[dict]) -> tuple[bool, 
         "decision": claim.get("decision", ""),
         "coverage": args.coverage.strip(),
         "result": args.result.strip(),
-        "evidence": evidence,
         "resolves": target_id,
     }
+    if evidence:
+        values["evidence"] = evidence
+    return True, values
 
 
 def add(args: argparse.Namespace) -> int:
@@ -636,6 +656,7 @@ def add(args: argparse.Namespace) -> int:
         if errors:
             print(f"refusing to append: {errors[0]}", file=sys.stderr)
             return 2
+        warn_reference_drift(entries)
         warn_active_duplicates(entries)
         valid, values = _validate_add(args, entries)
         if not valid:
@@ -713,10 +734,13 @@ def main(argv: list[str] | None = None) -> int:
         bad: list[str] = []
         entries = read_log(bad)
         if bad:
-            raise ValueError("cannot use Explog while log records are unreadable")
-        errors = lifecycle_errors(entries)
-        if errors:
-            raise ValueError(f"invalid Explog ledger: {errors[0]}")
+            print(
+                "warning: some Explog records were unreadable; showing readable records",
+                file=sys.stderr,
+            )
+        for error in lifecycle_errors(entries):
+            print(f"warning: invalid Explog ledger: {error}", file=sys.stderr)
+        warn_reference_drift(entries)
         warn_active_duplicates(entries)
         if command == "show":
             args = _show_parser().parse_args(argv[1:])

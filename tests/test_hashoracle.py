@@ -156,7 +156,7 @@ class TestCicadaSigningConvention(unittest.TestCase):
     """The external known answer: Cicada's own RSA signatures."""
 
     key = pgp.parse_public_key(c.communication("cicada-3301-public-key").raw)
-    signed = [m for m in c.communications if pgp._SIGSTART in m.raw]
+    signed = [m for m in c.communications if pgp.SIGNATURE_BEGIN in m.raw]
 
     def test_the_key_is_the_published_3301_fingerprint(self):
         self.assertEqual(self.key.fingerprint,
@@ -177,8 +177,8 @@ class TestCicadaSigningConvention(unittest.TestCase):
             1,
         )
         self.assertEqual(
-            mutated.split(pgp._SIGSTART, 1)[1],
-            message.raw.split(pgp._SIGSTART, 1)[1],
+            mutated.split(pgp.SIGNATURE_BEGIN, 1)[1],
+            message.raw.split(pgp.SIGNATURE_BEGIN, 1)[1],
         )
         self.assertFalse(pgp.verify_cleartext(mutated, self.key).ok)
 

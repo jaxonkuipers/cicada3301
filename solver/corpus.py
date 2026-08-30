@@ -575,7 +575,11 @@ class Communication:
 def _read_communication(row: dict[str, str]) -> Communication:
     path = CORPUS / row["path"]
     raw = path.read_text(encoding="utf-8")
-    body = pgp.clearsigned_body(raw) if pgp._CLEAR in raw else raw.strip("\n")
+    body = (
+        pgp.clearsigned_body(raw)
+        if pgp.CLEARSIGNED_BEGIN in raw
+        else raw.strip("\n")
+    )
     return Communication(
         id=row["id"],
         sequence=int(row["sequence"]),

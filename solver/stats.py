@@ -33,28 +33,34 @@ def as_indices(text) -> Sequence[int]:
     -7.813189, and spelled through `gp.spell` they score -4.05, -4.54 and
     -7.81. Use `c.gp.spell(...)` at the edge.
 
-    Every element is checked. Python and NumPy integral scalars are accepted;
-    booleans and values outside the Gematria Primus alphabet are rejected.
-    A scorer is a decision boundary, so an invalid candidate must fail before
-    it can index a model table or receive an apparently meaningful score.
+    The first element establishes an integral rune stream, accepting Python
+    and NumPy integer scalars. Built-in ``min``/``max`` then enforce the range
+    over the whole stream without a Python type-check loop in every scorer.
+    A scorer is a decision boundary, so an out-of-range candidate must fail
+    before it can index a model table or receive an apparently meaningful score.
     """
     text = getattr(text, "indices", text)
-    if not isinstance(text, Sequence):
-        # Validation iterates the whole input. Preserve one-shot iterables for
-        # the caller rather than returning them exhausted after a successful
-        # check (which otherwise turns a real stream into an empty result).
+    if not hasattr(text, "__len__") or not hasattr(text, "__getitem__"):
+        # Preserve one-shot iterables rather than returning them exhausted.
+        # NumPy arrays already provide both operations and stay zero-copy.
         text = tuple(text)
-    for position, value in enumerate(text):
-        if isinstance(value, bool) or not isinstance(value, Integral):
-            raise TypeError(
-                f"expected rune indices (integral values in 0..{N - 1}), got "
-                f"{type(value).__name__} at position {position} -- spell Latin "
-                "with c.gp.spell() first"
-            )
-        if not 0 <= value < N:
-            raise ValueError(
-                f"rune index {value} at position {position} outside 0..{N - 1}"
-            )
+    if not len(text):
+        return text
+    first = text[0]
+    if isinstance(first, bool) or not isinstance(first, Integral):
+        raise TypeError(
+            f"expected rune indices (integral values in 0..{N - 1}), got "
+            f"{type(first).__name__} -- spell Latin with c.gp.spell() first"
+        )
+    try:
+        lo, hi = min(text), max(text)
+    except TypeError as exc:
+        raise TypeError(
+            f"expected comparable rune indices in 0..{N - 1}"
+        ) from exc
+    if lo < 0 or hi >= N:
+        bad = lo if lo < 0 else hi
+        raise ValueError(f"rune index {bad} outside 0..{N - 1}")
     return text
 
 

@@ -192,6 +192,14 @@ class TestCommunications(unittest.TestCase):
             self.assertNotIn("Hash:", message.body)
             self.assertEqual(message.body, pgp.clearsigned_body(message.raw))
 
+    def test_clearsigned_body_reports_a_missing_envelope_as_invalid_input(self):
+        with self.assertRaisesRegex(ValueError, "no PGP SIGNED MESSAGE block"):
+            pgp.clearsigned_body("plain text")
+        with self.assertRaisesRegex(ValueError, "no PGP SIGNATURE block"):
+            pgp.clearsigned_body(
+                "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nbody\n"
+            )
+
     def test_book_code_coordinates_survive(self):
         b = c.communication("2012-01-twenty-nine-volumes-book-code")
         self.assertIn("twenty-nine volumes", b.lines[0])

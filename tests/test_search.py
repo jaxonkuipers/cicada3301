@@ -313,6 +313,13 @@ class ExactSkips(unittest.TestCase):
         _, skips, pt = search.solve(self.ct, self.cands, layers)
         self.assertEqual(pt, cipher.vigenere_decrypt(self.ct, key, skips))
 
+    def test_repeating_layers_reduce_numeric_keys_modulo_29(self):
+        numeric = search.layers_repeating(self.ct, [30, 1], search.sub)
+        reduced = search.layers_repeating(self.ct, [1, 1], search.sub)
+        self.assertEqual(numeric.rows, reduced.rows)
+        with self.assertRaises(TypeError):
+            search.layers_repeating(self.ct, [True], search.sub)
+
     def test_solve_rejects_non_f_candidates_and_bad_dimensions(self):
         with self.assertRaises(ValueError):
             search.cum_of([0, 29])

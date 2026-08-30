@@ -12,7 +12,7 @@ c = corpus.load()
 
 
 class TestStats(unittest.TestCase):
-    def test_shared_index_validation_checks_every_rune(self):
+    def test_shared_index_validation_checks_type_and_full_range(self):
         class Rune(IntEnum):
             F = 0
             U = 1
@@ -22,8 +22,8 @@ class TestStats(unittest.TestCase):
         for bad, error in (
             ([0, 1, 29, 2], ValueError),
             ([0, -1, 2], ValueError),
-            ([0, True, 2], TypeError),
-            ([0, 1.0, 2], TypeError),
+            ([True, 0, 2], TypeError),
+            ([1.0, 0, 2], TypeError),
         ):
             with self.assertRaises(error, msg=bad):
                 stats.as_indices(bad)

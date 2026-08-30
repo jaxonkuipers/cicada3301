@@ -267,7 +267,7 @@ class TestPrimitives(unittest.TestCase):
                 with self.assertRaises(error, msg=(call, skips)):
                     call(skips)
 
-    def test_cipher_inputs_and_rune_keys_use_shared_index_validation(self):
+    def test_cipher_inputs_are_runes_and_numeric_keys_are_modular(self):
         for decrypt in (
             lambda text: cipher.shift_decrypt(text, 1),
             cipher.atbash,
@@ -276,10 +276,14 @@ class TestPrimitives(unittest.TestCase):
         ):
             with self.assertRaises(ValueError, msg=decrypt):
                 decrypt([1, 29, 2])
-        with self.assertRaises(ValueError):
-            cipher.vigenere_decrypt([1, 2, 3], [29])
-        with self.assertRaises(ValueError):
-            cipher.vigenere_decrypt([0], [29], skips={0})
+        self.assertEqual(
+            cipher.vigenere_decrypt([1, 2, 3], [30]),
+            cipher.vigenere_decrypt([1, 2, 3], [1]),
+        )
+        self.assertEqual(cipher.vigenere_decrypt([0], [29], skips={0}), [0])
+        for key in ([True], [1.5]):
+            with self.assertRaises(TypeError):
+                cipher.vigenere_decrypt([1, 2, 3], key)
 
     def test_short_running_key_raises_clearly(self):
         # A key text shorter than the ciphertext used to escape as a bare
