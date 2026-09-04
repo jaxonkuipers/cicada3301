@@ -36,16 +36,6 @@ class BeamSkips(unittest.TestCase):
         self.assertGreater(len(self.candidates), len(self.planted))
         self.assertTrue(self.planted <= set(self.candidates))
 
-    def test_recovers_the_planted_interrupter_set(self):
-        def decrypt(ct, skips):
-            return cipher.vigenere_decrypt(ct, self.key, skips=skips)
-
-        out = search.beam_skips(
-            self.ct, self.candidates, decrypt,
-            lambda t: -fitness.chi2(t), width=64, final_score=fitness.score,
-        )
-        self.assertEqual(out[0][1], self.planted)
-
     def test_recovered_set_decrypts_rune_exact(self):
         def decrypt(ct, skips):
             return cipher.vigenere_decrypt(ct, self.key, skips=skips)
@@ -54,6 +44,7 @@ class BeamSkips(unittest.TestCase):
             self.ct, self.candidates, decrypt,
             lambda t: -fitness.chi2(t), width=64, final_score=fitness.score,
         )[0][1]
+        self.assertEqual(best, self.planted)
         self.assertEqual(decrypt(self.ct, best), self.pt)
 
     def test_density_prior_preserves_recovery(self):

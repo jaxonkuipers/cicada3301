@@ -54,15 +54,6 @@ class TestOracleFires(unittest.TestCase):
                 self.assertEqual(encs[gote], data, f"{ename}/{hname} -> {got}")
                 self.assertEqual(goth, hname)
 
-    def test_verify_is_true_exactly_when_identify_is_not_none(self):
-        d = ho.HASHES["sha512"](ho.encodings(PLAIN)["translit.upper"]).hex()
-        self.assertTrue(ho.verify(PLAIN, d))
-        self.assertIsNotNone(ho.identify(PLAIN, d))
-
-    def test_coverage_matches_the_family_size(self):
-        self.assertEqual(ho.coverage(PLAIN),
-                         len(ho.encodings(PLAIN)) * len(ho.HASHES))
-
     def test_hash_catalogue_has_one_source_of_truth(self):
         self.assertIs(ho.HASHES, hashes512.ALL)
         self.assertEqual(

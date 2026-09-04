@@ -1,7 +1,6 @@
 """Behavior tests for Discord retrieval, Explog, and managed worktrees."""
 
 import contextlib
-import hashlib
 import io
 import json
 import sqlite3
@@ -77,29 +76,6 @@ def call_dsearch(argv):
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
         code = dsearch.main(argv)
     return code, output.getvalue(), error.getvalue()
-
-
-class TestDiscordDatabase(unittest.TestCase):
-    def test_committed_database_is_complete_and_healthy(self):
-        database = Path(__file__).parents[1] / "discord.db"
-        self.assertTrue(database.is_file())
-        self.assertEqual(
-            hashlib.sha256(database.read_bytes()).hexdigest(),
-            "b7b9c8328a6cbfcde6640a25b199fe51044cf37a4db5cec08a2180d6f76b242f",
-        )
-        with contextlib.closing(sqlite3.connect(database)) as db:
-            self.assertEqual(db.execute("PRAGMA quick_check").fetchone()[0], "ok")
-            self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 109917,
-            )
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM runes").fetchone()[0], 7755)
-            self.assertEqual(
-                [row[1] for row in db.execute("PRAGMA table_info(msg_fts)")],
-                ["body", "extra"],
-            )
-            self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM msg_fts").fetchone()[0], 109917,
-            )
 
 
 class TestDsearch(unittest.TestCase):

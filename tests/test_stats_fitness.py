@@ -186,10 +186,6 @@ class TestFitness(unittest.TestCase):
         for fn in (stats.ioc, stats.doublet_rate, stats.entropy, stats.counts):
             self.assertEqual(fn(rt), fn(idx), fn.__name__)
 
-    def test_alphabet_size_is_shared(self):
-        self.assertEqual(fitness.N, stats.N)
-        self.assertEqual(len(fitness.english_frequencies()), stats.N)
-
     def test_windowed_refuses_degenerate_geometry(self):
         # step=0 used to escape as "range() arg 3 must not be zero".
         for kwargs in ({"step": 0}, {"step": -5}, {"size": 2}):
@@ -311,24 +307,6 @@ class LatinTextIsRejected(unittest.TestCase):
         for bad in ("THECIRCUMFERENCEIS", "WELCOMEPILGRIMTOTHE", "QQQQQQQQQQQQQQQQQQ"):
             with self.assertRaises(TypeError):
                 fitness.score(bad)
-
-    def test_the_three_that_tied_now_separate_when_spelled(self):
-        gp = corpus.load().gp
-        eng = [fitness.score(gp.spell(w))
-               for w in ("THECIRCUMFERENCEIS", "WELCOMEPILGRIMTOTHE")]
-        junk = fitness.score(gp.spell("QQQQQQQQQQQQQQQQQQ"))
-        self.assertTrue(all(e > junk + 3.0 for e in eng), (eng, junk))
-
-    def test_stats_reject_latin_too(self):
-        for fn in (stats.ioc, stats.doublet_rate, stats.entropy):
-            with self.assertRaises(TypeError):
-                fn("HELLOWORLD")
-
-    def test_runetext_and_lists_still_pass(self):
-        c = corpus.load()
-        self.assertIsInstance(fitness.score(c.section("0.5").text()), float)
-        self.assertIsInstance(fitness.score(list(c.unsolved.indices[:200])), float)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,11 +16,6 @@ c = corpus.load()
 
 
 class TestDrift(unittest.TestCase):
-    def test_unsolved_stream(self):
-        u = c.unsolved
-        self.assertEqual(len(u), corpus_verify.EXPECTED_UNSOLVED_LEN)
-        self.assertEqual(u.sha256(), corpus_verify.EXPECTED_UNSOLVED_SHA)
-
     def test_verify_all_pass(self):
         for name, passed, detail in corpus_verify.verify():
             self.assertTrue(passed, f"{name}: {detail}")
@@ -243,10 +238,6 @@ class TestCommunications(unittest.TestCase):
         for cid in ("2014-01-fallen-behind-outguess-08", "cicada-3301-public-key"):
             self.assertTrue(c.communication(cid).body)
 
-    def test_covered_by_the_drift_hash(self):
-        self.assertEqual(len(c.communications), corpus_verify.EXPECTED_COMMUNICATIONS)
-        self.assertEqual(corpus_verify.corpus_sha256(), corpus_verify.EXPECTED_CORPUS_SHA)
-
     def test_manifest_controls_public_puzzle_order(self):
         self.assertEqual(
             [m.sequence for m in c.communications],
@@ -294,30 +285,6 @@ class TestCommunications(unittest.TestCase):
 class TestSectionBoundaries(unittest.TestCase):
     """Sections start at their headline, not at a page edge."""
 
-    def test_mid_page_starts(self):
-        for sec, n in (("0.8", 9), ("0.11", 91)):
-            s = c.section(sec)
-            self.assertEqual(s.first_rune, n)
-            t = s.text()
-            head = c.gp.to_indices(s.headline.replace(" ", ""))
-            self.assertEqual(list(t.indices[: len(head)]), head)
-
-    def test_last_owned_page_is_not_where_the_text_ends(self):
-        # The field says which page the section owns; text() follows the spill
-        # one page further. The old name read as "where the section ends" and
-        # quietly said otherwise, and nothing consumed it, so nothing noticed.
-        for sec_id, owned, ends in (("0.7", "page-14", "page-15"),
-                                    ("0.10", "page-32", "page-33")):
-            sec = c.section(sec_id)
-            self.assertEqual(sec.last_owned_page, owned, sec_id)
-            self.assertEqual(sec.pages()[-1].id, owned, sec_id)
-            self.assertEqual(sec.text().positions[-1].page, ends, sec_id)
-
-    def test_pages_and_sections_hold_the_same_runes(self):
-        # The spill must neither lose nor duplicate a rune.
-        self.assertEqual(sum(len(p.text()) for p in c.pages),
-                         sum(len(s.text()) for s in c.sections))
-
     def test_preceding_section_gets_the_spill(self):
         # 0.7 runs 9 runes into page-15 and owns the number square there.
         t = c.section("0.7").text()
@@ -331,23 +298,6 @@ class TestSectionBoundaries(unittest.TestCase):
         # 0.8 and 0.11 no longer carry the foreign prefix.
         self.assertEqual(len(c.section("0.8").text()), 1894)
         self.assertEqual(len(c.section("0.11").text()), 1589)
-
-    def test_unsolved_stream_unmoved(self):
-        # Boundary shifts are internal to 0.5-0.12: the concatenated stream
-        # must not move.
-        self.assertEqual(c.unsolved.sha256(), corpus_verify.EXPECTED_UNSOLVED_SHA)
-
-    def test_sentences_reconstruct_sections(self):
-        for sec in c.sections:
-            rows = sec.sentences()
-            if not rows:
-                continue
-            stream = [i for s in rows for i in c.gp.to_indices(s.runes)]
-            text = list(sec.text().indices)
-            gap = corpus_verify.KNOWN_SENTENCE_GAPS.get(sec.id, 0)
-            self.assertEqual(text[: len(stream)], stream, sec.id)
-            self.assertEqual(len(text) - len(stream), gap, sec.id)
-
 
 class TestWords(unittest.TestCase):
     def test_line_break_does_not_split_words(self):

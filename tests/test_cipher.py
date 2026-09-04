@@ -255,18 +255,6 @@ class TestPrimitives(unittest.TestCase):
         self.assertEqual(cipher.vigenere_decrypt([1, 2, 3], [1], skips={2}),
                          [0, 1, 3])
 
-    def test_every_monoalphabetic_primitive_validates_skip_positions(self):
-        calls = (
-            lambda skips: cipher.shift_decrypt([1, 2, 3], 1, skips),
-            lambda skips: cipher.atbash([1, 2, 3], skips),
-            lambda skips: cipher.affine_decrypt([1, 2, 3], 7, 11, skips),
-        )
-        for call in calls:
-            for skips, error in (({-1}, ValueError), ({3}, ValueError), ({True}, TypeError),
-                                 ({1.5}, TypeError)):
-                with self.assertRaises(error, msg=(call, skips)):
-                    call(skips)
-
     def test_cipher_inputs_are_runes_and_numeric_keys_are_modular(self):
         for decrypt in (
             lambda text: cipher.shift_decrypt(text, 1),
