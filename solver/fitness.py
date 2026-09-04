@@ -46,7 +46,7 @@ import json
 import math
 from collections.abc import Sequence
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from solver import stats
 from solver.stats import as_indices
@@ -110,8 +110,7 @@ def _counts(n: int) -> dict[tuple[int, ...], int]:
     maximum = int(model["max_order"])
     if not 1 <= n <= maximum:
         raise ValueError(f"frozen English model supports n=1..{maximum}, got {n}")
-    orders = model["counts"]
-    assert isinstance(orders, dict)  # checked by _frozen_model
+    orders = cast(dict, model["counts"])  # validated by _frozen_model
     entries = orders.get(str(n))
     if not isinstance(entries, list):
         raise ValueError(f"English model is missing order {n}")
@@ -127,8 +126,14 @@ def _counts(n: int) -> dict[tuple[int, ...], int]:
 
 
 @functools.cache
-def _model(n: int) -> tuple[dict[tuple[int, ...], float], float]:
-    """(log10-probability per n-gram, floor for unseen ones)."""
+def log_table(n: int) -> tuple[dict[tuple[int, ...], float], float]:
+    """The frozen model's (log10 probability per n-gram, unseen-gram floor).
+
+    The table behind `score`, public for consumers that flatten or re-index
+    it -- solver.search builds its DP cost table from order 2. Supported
+    orders are 1..max_order of the shipped model; the mapping and floor are
+    cached and shared, so treat them as read-only.
+    """
     grams = _counts(n)
     total = sum(grams.values())
     logs = {g: math.log10(v / total) for g, v in grams.items()}
@@ -140,13 +145,13 @@ def score(text: Sequence[int], n: int = N_DEFAULT) -> float:
     """Mean log10 n-gram probability per position. Higher = more English."""
     text = as_indices(text)
     if n < 1:
-        # _model(0) counts one empty gram at probability 1.0, so every
+        # log_table(0) counts one empty gram at probability 1.0, so every
         # candidate scores exactly 0.0 -- and real scores are negative, so a
         # miscomputed n silently promotes noise to the top of the ranking.
         raise ValueError(f"n must be >= 1, got {n}")
     if len(text) < n:
         raise ValueError(f"need at least {n} runes to score")
-    logs, floor = _model(n)
+    logs, floor = log_table(n)
     total = sum(
         logs.get(tuple(text[i : i + n]), floor) for i in range(len(text) - n + 1)
     )

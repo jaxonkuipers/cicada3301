@@ -5,7 +5,7 @@ import json
 import subprocess
 import unittest
 
-from solver.cli import explog
+from solver import explog
 from solver.paths import ROOT
 
 
@@ -93,22 +93,22 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
         return entry
 
     def test_resolution_is_id_based_not_created_or_merged_order(self):
-        self.assertFalse(explog.ledger_errors([self.result(), self.claim()]))
+        self.assertFalse(explog.lifecycle_errors([self.result(), self.claim()]))
         other_claim = {
             **self.claim(3), "object": "OBJECT", "operation": "OPERATION",
         }
         other_result = self.result(entry_id=4, target=3, object="OBJECT",
                                    operation="OPERATION")
         entries = [other_result, self.result(), other_claim, self.claim()]
-        self.assertFalse(explog.ledger_errors(entries))
+        self.assertFalse(explog.lifecycle_errors(entries))
         self.assertFalse(explog.current(entries))
 
     def test_unknown_resolution_is_rejected(self):
-        errors = explog.ledger_errors([self.result(target=999), self.claim()])
+        errors = explog.lifecycle_errors([self.result(target=999), self.claim()])
         self.assertTrue(any("unknown reference" in error for error in errors))
 
     def test_duplicate_ids_are_rejected(self):
-        errors = explog.ledger_errors([self.claim(), self.claim()])
+        errors = explog.lifecycle_errors([self.claim(), self.claim()])
         self.assertTrue(any("duplicate Explog id" in error for error in errors))
 
     def test_record_shape_is_part_of_the_lifecycle_contract(self):
@@ -117,13 +117,13 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
             ({"verdict": "maybe"}, "invalid verdict"),
             ({"object": ""}, "lacks object"),
         ):
-            errors = explog.ledger_errors([{**self.claim(), **change}])
+            errors = explog.lifecycle_errors([{**self.claim(), **change}])
             self.assertTrue(any(phrase in error for error in errors), errors)
-        errors = explog.ledger_errors([
+        errors = explog.lifecycle_errors([
             self.claim(), self.result(evidence=[]),
         ])
         self.assertTrue(any("lacks evidence" in error for error in errors), errors)
-        errors = explog.ledger_errors([
+        errors = explog.lifecycle_errors([
             {**self.claim(), "resolves": "other:1"},
         ])
         self.assertTrue(any("contains result fields" in error for error in errors), errors)
@@ -155,21 +155,21 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
         self.assertTrue(any("absent from the snapshot" in error for error in errors), errors)
 
     def test_a_claim_can_be_closed_only_once(self):
-        errors = explog.ledger_errors([
+        errors = explog.lifecycle_errors([
             self.claim(), self.result(), self.result(entry_id=3),
         ])
         self.assertTrue(any("already closed" in error for error in errors))
 
     def test_a_result_must_target_a_running_record(self):
-        errors = explog.ledger_errors([
+        errors = explog.lifecycle_errors([
             self.claim(), self.result(), self.result(entry_id=3, target=2),
         ])
         self.assertTrue(any("non-running" in error for error in errors))
 
     def test_result_identity_matches_the_claim(self):
-        self.assertFalse(explog.ledger_errors([self.claim(), self.result()]))
+        self.assertFalse(explog.lifecycle_errors([self.claim(), self.result()]))
         for field in explog.INHERITED_FIELDS:
-            errors = explog.ledger_errors([
+            errors = explog.lifecycle_errors([
                 self.claim(), self.result(**{field: "different"}),
             ])
             self.assertTrue(any(field in error for error in errors), field)
@@ -182,12 +182,12 @@ class ExplogLifecycleIntegrity(unittest.TestCase):
         }
         errors = explog.active_duplicate_errors([self.claim(), duplicate])
         self.assertTrue(any("duplicates active operation" in error for error in errors))
-        self.assertFalse(explog.ledger_errors([self.claim(), duplicate]))
+        self.assertFalse(explog.lifecycle_errors([self.claim(), duplicate]))
 
         closed_then_reopened = [
             self.claim(), self.result(), {**duplicate, "id": 3},
         ]
-        self.assertFalse(explog.ledger_errors(closed_then_reopened))
+        self.assertFalse(explog.lifecycle_errors(closed_then_reopened))
 
 
 if __name__ == "__main__":

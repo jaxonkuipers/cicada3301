@@ -132,7 +132,7 @@ class TestFitness(unittest.TestCase):
             fitness.score(list(range(20)), n=5)
 
     def test_degenerate_n_and_period_are_refused(self):
-        # _model(0) counts one empty gram at p=1.0, so every candidate scored
+        # log_table(0) counts one empty gram at p=1.0, so every candidate scored
         # exactly 0.0 -- and real scores are negative, so noise sorted first.
         for n in (0, -1):
             with self.assertRaises(ValueError, msg=n):

@@ -23,6 +23,7 @@ unsolved sections 458.
 
 from __future__ import annotations
 
+import functools
 import math
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -160,19 +161,16 @@ def beam_skips(
 
 N = 29
 NEG = -1e30
-_TAB: list[float] | None = None
 
 
+@functools.cache
 def tab2() -> list[float]:
-    """fitness._model(2) flattened to tab[a*29+b], the DP's per-pair cost."""
-    global _TAB
-    if _TAB is None:
-        logs, floor = fitness._model(2)
-        t = [floor] * (N * N)
-        for (a, b), v in logs.items():
-            t[a * N + b] = v
-        _TAB = t
-    return _TAB
+    """fitness.log_table(2) flattened to tab[a*29+b], the DP's per-pair cost."""
+    logs, floor = fitness.log_table(2)
+    t = [floor] * (N * N)
+    for (a, b), v in logs.items():
+        t[a * N + b] = v
+    return t
 
 
 def cum_of(row: Sequence[int]) -> list[float]:
@@ -407,7 +405,7 @@ def solve(
                 if val > tgt[q]:
                     tgt[q] = val
                     bk[bp * M + q] = came
-        V0, V1, = n0, n1
+        V0, V1 = n0, n1
         back.append(bk)
 
     # tail after the last candidate
@@ -451,7 +449,8 @@ def solve(
     return best, skips, pt
 
 
-def layers_repeating(ct: Sequence[int], key: Sequence[int], op,
+def layers_repeating(ct: Sequence[int], key: Sequence[int],
+                     op: Callable[[int, int], int],
                      maxphase: int | None = None) -> LayerTable:
     """Rows for a repeating key: phase = skips mod len(key).
 
@@ -482,7 +481,8 @@ def layers_repeating(ct: Sequence[int], key: Sequence[int], op,
     return _layer_table(rows, L if nph == L else None, ct)
 
 
-def layers_stream(ct: Sequence[int], stream: Sequence[int], op,
+def layers_stream(ct: Sequence[int], stream: Sequence[int],
+                  op: Callable[[int, int], int],
                   nphase: int) -> LayerTable:
     """Rows for an aperiodic keystream: phase = skips, 0..nphase-1.
 
@@ -510,19 +510,26 @@ def layers_stream(ct: Sequence[int], stream: Sequence[int], op,
     return _layer_table(rows, None, ct)
 
 
-def sub(x, k):
+def sub(x: int, k: int) -> int:
     return x - k
 
 
-def add(x, k):
+def add(x: int, k: int) -> int:
     return x + k
 
 
-def beaufort(x, k):
+def beaufort(x: int, k: int) -> int:
     return k - x
 
 
-def refine(ct, cands, decrypt, skips, rounds: int = 3, swaps: bool = True):
+def refine(
+    ct: Sequence[int],
+    cands: Sequence[int],
+    decrypt: Decrypt,
+    skips: Iterable[int],
+    rounds: int = 3,
+    swaps: bool = True,
+) -> tuple[frozenset[int], Sequence[int]]:
     """Single-flip hill climb on 4-grams, from the DP's answer. -> (skips, pt).
 
     The DP maximises the n=2 objective exactly, and on 0.1 that objective's

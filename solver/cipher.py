@@ -27,7 +27,7 @@ solver/search.py.
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from numbers import Integral
 
 from solver.stats import as_indices
@@ -71,8 +71,8 @@ def _checked_text_and_skips(
 def apply_stream(
     text: Iterable[int],
     stream: Iterator[int],
-    op,
-    skips: frozenset[int] | set[int] = frozenset(),
+    op: Callable[[int, int], int],
+    skips: Iterable[int] = frozenset(),
 ) -> list[int]:
     """Combine `text` with a keystream, position by position.
 
@@ -179,20 +179,24 @@ def phi_primes() -> Iterator[int]:
 # interrupter, so the default is what the known-answer tests prove.
 
 
-def shift_decrypt(ct: Iterable[int], k: int, skips=frozenset()) -> list[int]:
+def shift_decrypt(
+    ct: Iterable[int], k: int, skips: Iterable[int] = frozenset(),
+) -> list[int]:
     if isinstance(k, bool) or not isinstance(k, Integral):
         raise TypeError("shift must be an integral value")
     ct, skips = _checked_text_and_skips(ct, skips)
     return [x if i in skips else (x - int(k)) % N for i, x in enumerate(ct)]
 
 
-def atbash(text: Iterable[int], skips=frozenset()) -> list[int]:
+def atbash(text: Iterable[int], skips: Iterable[int] = frozenset()) -> list[int]:
     """Alphabet inversion i -> 28-i. Self-inverse; section 0.0's cipher."""
     text, skips = _checked_text_and_skips(text, skips)
     return [x if i in skips else (N - 1 - x) % N for i, x in enumerate(text)]
 
 
-def affine_decrypt(ct: Iterable[int], a: int, b: int, skips=frozenset()) -> list[int]:
+def affine_decrypt(
+    ct: Iterable[int], a: int, b: int, skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """Invert c = a*p + b. 29 is prime, so any a in 1..28 works."""
     if any(isinstance(value, bool) or not isinstance(value, Integral) for value in (a, b)):
         raise TypeError("affine parameters must be integral values")
@@ -209,12 +213,16 @@ def affine_decrypt(ct: Iterable[int], a: int, b: int, skips=frozenset()) -> list
 # --------------------------------------------------------------------------
 
 
-def vigenere_decrypt(ct, key, skips=frozenset()) -> list[int]:
+def vigenere_decrypt(
+    ct: Iterable[int], key: Iterable[int], skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """p = c - k. Sections 0.1 (DIVINITY) and 0.4 (FIRFUMFERENFE)."""
     return apply_stream(ct, repeat(key), lambda x, k: x - k, skips)
 
 
-def vigenere_encrypt(pt, key, interrupter: int | None = 0) -> list[int]:
+def vigenere_encrypt(
+    pt: Iterable[int], key: Iterable[int], interrupter: int | None = 0,
+) -> list[int]:
     """c = p + k, with the measured interrupter rule: a plaintext rune equal
     to `interrupter` passes through and the key holds. None disables."""
     pt = list(as_indices(pt))
@@ -230,17 +238,23 @@ def vigenere_encrypt(pt, key, interrupter: int | None = 0) -> list[int]:
     return out
 
 
-def beaufort_decrypt(ct, key, skips=frozenset()) -> list[int]:
+def beaufort_decrypt(
+    ct: Iterable[int], key: Iterable[int], skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """p = k - c. Self-inverse."""
     return apply_stream(ct, repeat(key), lambda x, k: k - x, skips)
 
 
-def variant_beaufort_decrypt(ct, key, skips=frozenset()) -> list[int]:
+def variant_beaufort_decrypt(
+    ct: Iterable[int], key: Iterable[int], skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """p = c + k (encryption was c = p - k)."""
     return apply_stream(ct, repeat(key), lambda x, k: x + k, skips)
 
 
-def running_key_decrypt(ct, stream: Iterable[int], skips=frozenset()) -> list[int]:
+def running_key_decrypt(
+    ct: Iterable[int], stream: Iterable[int], skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """p = c - s for an arbitrary keystream (phi_primes(), another text...)."""
     # apply_stream reduces the operation result modulo N after validating the
     # raw stream value. Reducing here first converts bool to int and bypasses
@@ -253,7 +267,9 @@ def running_key_decrypt(ct, stream: Iterable[int], skips=frozenset()) -> list[in
 # --------------------------------------------------------------------------
 
 
-def autokey_pt_decrypt(ct, key, skips=frozenset()) -> list[int]:
+def autokey_pt_decrypt(
+    ct: Iterable[int], key: Iterable[int], skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """Plaintext autokey: keystream is key ++ recovered plaintext.
 
     OPEN QUESTION, not a measurement. Where the keystream IS the plaintext,
@@ -278,7 +294,9 @@ def autokey_pt_decrypt(ct, key, skips=frozenset()) -> list[int]:
     return out
 
 
-def autokey_ct_decrypt(ct, key, skips=frozenset()) -> list[int]:
+def autokey_ct_decrypt(
+    ct: Iterable[int], key: Iterable[int], skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """Ciphertext autokey: keystream is key ++ ciphertext.
 
     Skipped ciphertext runes are left out of the keystream -- reading (a) of
@@ -299,7 +317,9 @@ def autokey_ct_decrypt(ct, key, skips=frozenset()) -> list[int]:
 # --------------------------------------------------------------------------
 
 
-def phi_prime_decrypt(ct, skips=frozenset()) -> list[int]:
+def phi_prime_decrypt(
+    ct: Iterable[int], skips: Iterable[int] = frozenset(),
+) -> list[int]:
     """p_i = c_i - phi(q_i), q_i the i-th prime; section 0.13, exact 85/85
     with skips={56} (the one true interrupter on that page)."""
     return running_key_decrypt(ct, phi_primes(), skips)

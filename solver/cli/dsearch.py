@@ -13,7 +13,7 @@ import sqlite3
 import sys
 from contextlib import closing
 from datetime import datetime
-from typing import NamedTuple
+from typing import NamedTuple, NoReturn
 
 from solver import runes
 from solver.paths import DISCORD_DB
@@ -50,9 +50,9 @@ class Hit(NamedTuple):
     note: str = ""
 
 
-def die(message: str) -> SystemExit:
+def die(message: str) -> NoReturn:
     print(message, file=sys.stderr)
-    return SystemExit(2)
+    raise SystemExit(2)
 
 
 def filters(args: argparse.Namespace) -> tuple[str, list[str]]:
@@ -74,9 +74,9 @@ def filters(args: argparse.Namespace) -> tuple[str, list[str]]:
                 raise ValueError(value)
             datetime.strptime(value, DATE_FORMATS[len(value)])
         except (KeyError, ValueError):
-            raise die(
+            die(
                 f"--{name} must be a real YYYY, YYYY-MM or YYYY-MM-DD date"
-            ) from None
+            )
     if args.since:
         where.append("m.ts >= ?")
         params.append(args.since)
@@ -97,13 +97,13 @@ def fts_rows(
         return db.execute(sql, (query, *params)).fetchall(), query
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc):
-            raise die(
+            die(
                 "discord.db is incompatible with this Dsearch version; "
                 "restore the committed database"
-            ) from None
+            )
         terms = re.findall(r"\w+", query)
         if not terms:
-            raise die(f"nothing searchable in {query!r}") from None
+            die(f"nothing searchable in {query!r}")
         safe = " ".join(f'"{term}"' for term in terms)
         print(
             f"note: invalid FTS5 syntax; searched {safe!r} with every term required",
@@ -112,13 +112,13 @@ def fts_rows(
         try:
             return db.execute(sql, (safe, *params)).fetchall(), safe
         except sqlite3.OperationalError as retry:
-            raise die(f"search failed: {retry}") from None
+            die(f"search failed: {retry}")
 
 
 def require_schema(db: sqlite3.Connection) -> None:
     columns = [row[1] for row in db.execute("PRAGMA table_info(msg_fts)")]
     if columns != ["body", "extra"]:
-        raise die(
+        die(
             "discord.db is incompatible with this Dsearch version; "
             "restore the committed database"
         )
@@ -140,7 +140,7 @@ def require_channel(db: sqlite3.Connection, channel: str | None) -> None:
         )
     ]
     choices = ", ".join(channels)
-    raise die(f"unknown Discord channel {channel!r}; available: {choices}")
+    die(f"unknown Discord channel {channel!r}; available: {choices}")
 
 
 def hit_from_row(row: sqlite3.Row, note: str = "") -> Hit:
@@ -188,9 +188,9 @@ def search_runes(
     try:
         canon, notation = runes.canonicalise_query(args.runes)
     except ValueError as exc:
-        raise die(str(exc)) from None
+        die(str(exc))
     if len(canon) < runes.MIN_INDEXED:
-        raise die(f"rune queries need at least {runes.MIN_INDEXED} runes")
+        die(f"rune queries need at least {runes.MIN_INDEXED} runes")
     clause, params = filters(args)
     sql = f"""
         SELECT m.*, r.notation, r.raw, MAX(r.n) AS n
@@ -202,7 +202,7 @@ def search_runes(
     try:
         rows = db.execute(sql, (f'"{canon}"', canon, *params, args.limit)).fetchall()
     except sqlite3.OperationalError as exc:
-        raise die(f"rune query failed: {exc}") from None
+        die(f"rune query failed: {exc}")
     indices = tuple(runes.indices_of(canon))
     hits = [
         hit_from_row(row, f"{row['notation']}: {' '.join(row['raw'].split())[:100]}")
@@ -306,7 +306,7 @@ def conversation_rows(
     found = {row["id"] for row in selected}
     missing = [message_id for message_id in ids if message_id not in found]
     if missing:
-        raise die("unknown message ids: " + ", ".join(map(str, missing)))
+        die("unknown message ids: " + ", ".join(map(str, missing)))
 
     by_channel: dict[str, list[tuple[int, int]]] = {}
     for row in selected:
@@ -416,11 +416,11 @@ def main(argv: list[str] | None = None) -> int:
         args = (show_parser().parse_args(argv[1:]) if showing
                 else search_parser().parse_args(argv))
         if showing and args.window < 0:
-            raise die("--window must be non-negative")
+            die("--window must be non-negative")
         if not showing and args.limit < 1:
-            raise die("--limit must be positive")
+            die("--limit must be positive")
         if not DISCORD_DB.exists():
-            raise die("discord.db is missing from this checkout")
+            die("discord.db is missing from this checkout")
 
         with closing(sqlite3.connect(f"{DISCORD_DB.as_uri()}?mode=ro", uri=True)) as db:
             db.row_factory = sqlite3.Row

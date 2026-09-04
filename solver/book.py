@@ -24,22 +24,22 @@ from solver import corpus
 __all__ = ["plaintext", "words", "spelled", "sections"]
 
 
-def sections(c) -> list:
+def sections(c: corpus.Corpus) -> list[corpus.Section]:
     """The solved sections that carry an English alignment, in book order."""
     return [s for s in c.sections if s.solved and s.sentences()]
 
 
-def plaintext(section) -> str:
+def plaintext(section: corpus.Section) -> str:
     """The section's printed English, one space between sentences."""
     return " ".join(s.english for s in section.sentences() if s.english)
 
 
-def words(section) -> list[str]:
+def words(section: corpus.Section) -> list[str]:
     """Upper-case word tokens of the section's printed English, in order."""
     return re.findall(r"[A-Za-z]+", plaintext(section).upper())
 
 
-def spelled(section, gp) -> list[int]:
+def spelled(section: corpus.Section, gp: corpus.GematriaPrimus) -> list[int]:
     """The section's printed English as rune indices, words run together."""
     out: list[int] = []
     for w in words(section):

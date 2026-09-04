@@ -10,7 +10,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from solver import explog as ledger_mod
 from solver.cli import explog
+
+WAKE = "test-wake"
+
+
+def hid(sequence):
+    """The handle id the test wake's shard assigns to entry `sequence`."""
+    return f"{WAKE}:{sequence}"
 
 
 class TestExplog(unittest.TestCase):
@@ -26,9 +34,9 @@ class TestExplog(unittest.TestCase):
             evidence = root / "research" / "campaigns" / "test" / "FINDINGS.md"
             evidence.parent.mkdir(parents=True)
             evidence.write_text("findings\n", encoding="utf-8")
-            path = root / "research" / "local.jsonl"
-            with mock.patch.multiple(explog, LOG=path, ROOT=root):
-                yield path
+            self.ledger = ledger_mod.Ledger(root=root)
+            with mock.patch.dict(os.environ, {"CICADA_WAKE_ID": WAKE}):
+                yield self.ledger.shard(WAKE)
 
     @staticmethod
     def running(object_="test object", operation="exact operation"):
@@ -38,20 +46,20 @@ class TestExplog(unittest.TestCase):
             "--decision", "positive favors a reader; negative favors lost state",
         ]
 
-    @staticmethod
-    def call(argv):
+    def call(self, argv):
         output = io.StringIO()
         error = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
-            code = explog.main(argv)
+            code = explog.main(argv, ledger=self.ledger)
         return code, output.getvalue(), error.getvalue()
 
-    def close(self, entry_id=1, verdict="negative", **fields):
+    def close(self, entry_id=None, verdict="negative", **fields):
         evidence = fields.pop(
             "evidence", "research/campaigns/test/FINDINGS.md",
         )
         args = [
-            "add", "--verdict", verdict, "--resolves", str(entry_id),
+            "add", "--verdict", verdict,
+            "--resolves", str(hid(1) if entry_id is None else entry_id),
             "--coverage", fields.pop("coverage", "all 256 offsets and two controls"),
             "--result", fields.pop("result", "zero hits; the selected relation fails"),
         ]
@@ -62,7 +70,9 @@ class TestExplog(unittest.TestCase):
         return self.call(args)
 
     def test_verdicts_are_the_whole_lifecycle(self):
-        self.assertEqual(explog.VERDICTS, ("running", "negative", "positive", "blocked"))
+        self.assertEqual(
+            ledger_mod.VERDICTS, ("running", "negative", "positive", "blocked"),
+        )
 
     def test_running_claim_has_one_compact_shape(self):
         with self.log() as path:
@@ -75,7 +85,7 @@ class TestExplog(unittest.TestCase):
             code, _, error = self.call(self.running() + ["--coverage", "premature"])
             self.assertEqual(code, 2)
             self.assertIn("result fields", error)
-            self.assertEqual(path.read_text(), "")
+            self.assertFalse(path.exists())
 
     def test_running_claim_requires_a_canonical_route(self):
         with self.log() as path:
@@ -91,7 +101,7 @@ class TestExplog(unittest.TestCase):
             code, _, error = self.call(args)
             self.assertEqual(code, 2)
             self.assertIn("unknown route R14.8", error)
-            self.assertEqual(path.read_text(), "")
+            self.assertFalse(path.exists())
 
     def test_result_requires_live_claim_exact_coverage_and_result(self):
         with self.log():
@@ -125,7 +135,7 @@ class TestExplog(unittest.TestCase):
             self.assertEqual(self.close(evidence="research/campaigns/test/FINDINGS.md")[0], 0)
             entries = [json.loads(line) for line in path.read_text().splitlines()]
             result = entries[-1]
-            self.assertEqual(result["resolves"], 1)
+            self.assertEqual(result["resolves"], hid(1))
             self.assertEqual(result["object"], "test object")
             self.assertEqual(result["operation"], "exact operation")
             self.assertEqual(result["campaign"], "test-campaign")
@@ -150,11 +160,11 @@ class TestExplog(unittest.TestCase):
             self.assertEqual(code, 0, error)
             result = json.loads(path.read_text().splitlines()[-1])
             self.assertNotIn("evidence", result)
-            self.assertFalse(explog.current(explog.read_log()))
+            self.assertFalse(ledger_mod.current(self.ledger.read()))
 
     def test_result_evidence_must_be_a_file_inside_the_repository(self):
         with self.log() as path:
-            root = path.parents[1]
+            root = self.ledger.root
             self.assertEqual(self.call(self.running())[0], 0)
             code, _, error = self.close(evidence="research/missing.md")
             self.assertEqual(code, 2)
@@ -181,7 +191,7 @@ class TestExplog(unittest.TestCase):
         self.assertIn("already reserved", error)
 
     def test_merged_duplicate_locks_do_not_block_other_writes_or_resolution(self):
-        with self.log() as path:
+        with self.log():
             claims = [
                 {
                     "id": entry_id,
@@ -195,19 +205,21 @@ class TestExplog(unittest.TestCase):
                 }
                 for entry_id in (1, 2)
             ]
-            path.write_text(
+            self.ledger.shard_dir.mkdir(parents=True)
+            self.ledger.shard("peer").write_text(
                 "".join(json.dumps(entry) + "\n" for entry in claims),
                 encoding="utf-8",
             )
-            self.assertTrue(explog.active_duplicate_errors(explog.read_log()))
+            self.assertTrue(ledger_mod.active_duplicate_errors(self.ledger.read()))
             code, _, warning = self.call(self.running("other", "other operation"))
             self.assertEqual(code, 0)
             self.assertIn("warning: running claim 2 duplicates", warning)
             self.assertEqual(self.close(entry_id=1)[0], 0)
             self.assertEqual(self.close(entry_id=2)[0], 0)
-            self.assertFalse(explog.ledger_errors(explog.read_log()))
+            self.assertFalse(ledger_mod.lifecycle_errors(self.ledger.read()))
             self.assertEqual(
-                [entry["id"] for entry in explog.current(explog.read_log())], [3],
+                [entry["id"] for entry in ledger_mod.current(self.ledger.read())],
+                [hid(1)],
             )
 
     def test_result_has_one_target_and_cannot_override_claim_identity(self):
@@ -242,16 +254,18 @@ class TestExplog(unittest.TestCase):
             self.assertEqual(self.close(result="cobalt control passes; target has zero hits")[0], 0)
             code, output, error = self.call(["cobalt zero"])
             self.assertEqual(code, 0)
-            self.assertIn("#2 [negative]", output)
+            self.assertIn(f"#{hid(2)} [negative]", output)
             self.assertIn("cobalt control passes", output)
             self.assertIn("1 of 1", error)
             _, output, _ = self.call(["cobalt", "--json"])
             payload = json.loads(output)
             self.assertEqual(payload["hits"], 1)
-            self.assertEqual(payload["results"][0]["id"], 2)
+            self.assertEqual(payload["results"][0]["id"], hid(2))
             self.assertIn("result", payload["results"][0])
-            _, output, _ = self.call(["show", "2", "--json"])
-            self.assertEqual(json.loads(output)[0]["coverage"], "all 256 offsets and two controls")
+            _, output, _ = self.call(["show", hid(2), "--json"])
+            self.assertEqual(
+                json.loads(output)[0]["coverage"], "all 256 offsets and two controls",
+            )
 
     def test_search_collapses_a_closed_claim_but_show_retains_it(self):
         with self.log():
@@ -260,9 +274,11 @@ class TestExplog(unittest.TestCase):
             _, output, _ = self.call(["rare", "--json"])
             payload = json.loads(output)
             self.assertEqual(payload["hits"], 1)
-            self.assertEqual(payload["results"][0]["id"], 2)
-            _, output, _ = self.call(["show", "1", "2", "--json"])
-            self.assertEqual([entry["id"] for entry in json.loads(output)], [1, 2])
+            self.assertEqual(payload["results"][0]["id"], hid(2))
+            _, output, _ = self.call(["show", hid(1), hid(2), "--json"])
+            self.assertEqual(
+                [entry["id"] for entry in json.loads(output)], [hid(1), hid(2)],
+            )
 
     def test_show_and_query_validate_inputs(self):
         with self.log():
@@ -281,7 +297,7 @@ class TestExplog(unittest.TestCase):
             self.assertEqual(self.close(result="cobalt zero")[0], 0)
             code, output, _ = self.call(["cobalt", "zero"])
             self.assertEqual(code, 0)
-            self.assertIn("#2 [negative]", output)
+            self.assertIn(f"#{hid(2)} [negative]", output)
 
     def test_corrupt_log_blocks_append(self):
         with self.log() as path:
@@ -294,11 +310,12 @@ class TestExplog(unittest.TestCase):
 
     def test_non_object_and_invalid_utf8_rows_have_file_diagnostics(self):
         with self.log() as path:
+            path.parent.mkdir(parents=True)
             path.write_text("[]\n", encoding="utf-8")
             code, output, error = self.call(["running"])
             self.assertEqual(code, 0)
             self.assertEqual(output, "no entries\n")
-            self.assertIn("research/local.jsonl:1", error)
+            self.assertIn("research/explog/test-wake.jsonl:1", error)
             self.assertIn("expected object", error)
             self.assertIn("showing readable records", error)
 
@@ -306,21 +323,21 @@ class TestExplog(unittest.TestCase):
             code, output, error = self.call(["running"])
             self.assertEqual(code, 0)
             self.assertEqual(output, "no entries\n")
-            self.assertIn("research/local.jsonl", error)
+            self.assertIn("research/explog/test-wake.jsonl", error)
             self.assertIn("not valid UTF-8", error)
             self.assertIn("showing readable records", error)
 
     def test_reference_drift_warns_without_disabling_reads_or_unrelated_adds(self):
-        with self.log() as path:
+        with self.log():
             self.assertEqual(self.call(self.running())[0], 0)
             self.assertEqual(self.close()[0], 0)
-            root = path.parents[1]
+            root = self.ledger.root
             (root / "research" / "campaigns" / "test" / "FINDINGS.md").unlink()
             (root / "corpus" / "route.csv").write_text(
                 "route,round\nR12.1,2012\n", encoding="utf-8",
             )
 
-            code, output, warning = self.call(["show", "2"])
+            code, output, warning = self.call(["show", hid(2)])
             self.assertEqual(code, 0)
             self.assertIn("zero hits", output)
             self.assertIn("stale route", warning)
@@ -335,6 +352,7 @@ class TestExplog(unittest.TestCase):
 
     def test_structural_drift_warns_on_reads_and_blocks_append(self):
         with self.log() as path:
+            path.parent.mkdir(parents=True)
             path.write_text(
                 json.dumps({
                     "id": 1,
@@ -354,7 +372,7 @@ class TestExplog(unittest.TestCase):
             self.assertIn("refusing to append", error)
 
     def test_concurrent_claims_receive_unique_ids(self):
-        if explog.fcntl is None:
+        if ledger_mod.fcntl is None:
             self.skipTest("fcntl unavailable")
         with self.log() as path, contextlib.redirect_stdout(io.StringIO()), \
              contextlib.redirect_stderr(io.StringIO()):
@@ -362,6 +380,7 @@ class TestExplog(unittest.TestCase):
                 threading.Thread(
                     target=explog.main,
                     args=(self.running(f"object {index}", f"operation {index}"),),
+                    kwargs={"ledger": self.ledger},
                 )
                 for index in range(8)
             ]
@@ -370,50 +389,34 @@ class TestExplog(unittest.TestCase):
             for worker in workers:
                 worker.join()
             entries = [json.loads(line) for line in path.read_text().splitlines()]
-        self.assertEqual(sorted(entry["id"] for entry in entries), list(range(1, 9)))
+        self.assertEqual(
+            sorted(entry["id"] for entry in entries),
+            [hid(sequence) for sequence in range(1, 9)],
+        )
 
-    def test_managed_wake_uses_own_shard_and_records_its_path(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            shards = root / "research" / "explog"
-            shards.parent.mkdir()
-            (root / "corpus").mkdir()
-            (root / "corpus" / "route.csv").write_text(
-                "route,round\nR14.7,2014\n", encoding="utf-8",
-            )
-            with mock.patch.multiple(
-                explog, ROOT=root, LOG=shards, SHARD_DIR=shards,
-            ), mock.patch.dict(os.environ, {"CICADA_WAKE_ID": "test-wake"}):
-                code, _, _ = self.call(self.running())
+    def test_wake_shard_records_handle_ids_and_its_own_path(self):
+        with self.log() as path:
+            code, _, _ = self.call(self.running())
             self.assertEqual(code, 0)
-            entry = json.loads((shards / "test-wake.jsonl").read_text())
-            self.assertEqual(entry["id"], "test-wake:1")
+            entry = json.loads(path.read_text())
+            self.assertEqual(entry["id"], hid(1))
             self.assertEqual(entry["log_path"], "research/explog/test-wake.jsonl")
 
     def test_invalid_wake_id_errors_and_unmanaged_fallback_warns(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            shards = root / "research" / "explog"
-            shards.parent.mkdir()
-            (root / "corpus").mkdir()
-            (root / "corpus" / "route.csv").write_text(
-                "route,round\nR14.7,2014\n", encoding="utf-8",
-            )
-            with mock.patch.multiple(
-                explog, ROOT=root, LOG=shards, SHARD_DIR=shards,
-            ), mock.patch.dict(
+        with self.log():
+            with mock.patch.dict(
                 os.environ, {"CICADA_WAKE_ID": "bad_wake"}, clear=True,
             ):
                 code, _, error = self.call(self.running())
             self.assertEqual(code, 2)
             self.assertIn("invalid CICADA_WAKE_ID", error)
-            self.assertFalse(shards.exists())
+            self.assertFalse(self.ledger.shard_dir.exists())
 
         runner = mock.Mock(return_value=mock.Mock(stdout="main\n"))
         error = io.StringIO()
         with mock.patch.dict(os.environ, {}, clear=True), \
              contextlib.redirect_stderr(error):
-            self.assertEqual(explog.current_wake_id(runner), "local")
+            self.assertEqual(ledger_mod.current_wake_id(runner), "local")
         self.assertIn("fallback Explog wake id", error.getvalue())
 
 

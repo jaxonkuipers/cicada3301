@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from solver import cipher, corpus, fitness, pgp, stats
+from solver import cipher, corpus, corpus_verify, fitness, pgp, stats
 
 c = corpus.load()
 
@@ -18,12 +18,18 @@ c = corpus.load()
 class TestDrift(unittest.TestCase):
     def test_unsolved_stream(self):
         u = c.unsolved
-        self.assertEqual(len(u), corpus.EXPECTED_UNSOLVED_LEN)
-        self.assertEqual(u.sha256(), corpus.EXPECTED_UNSOLVED_SHA)
+        self.assertEqual(len(u), corpus_verify.EXPECTED_UNSOLVED_LEN)
+        self.assertEqual(u.sha256(), corpus_verify.EXPECTED_UNSOLVED_SHA)
 
     def test_verify_all_pass(self):
-        for name, passed, detail in corpus.verify():
+        for name, passed, detail in corpus_verify.verify():
             self.assertTrue(passed, f"{name}: {detail}")
+
+    def test_moved_drift_symbols_still_resolve(self):
+        # Route records cite corpus.verify()/corpus_sha256(); solver/corpus.py
+        # delegates the moved names to corpus_verify so those pointers stay live.
+        self.assertIs(corpus.verify, corpus_verify.verify)
+        self.assertIs(corpus.corpus_sha256, corpus_verify.corpus_sha256)
 
 
 class TestAlphabetSize(unittest.TestCase):
@@ -220,7 +226,7 @@ class TestCommunications(unittest.TestCase):
         # The morse message is nothing but tabs and spaces. A body built with
         # .strip() reduced it to "" and the loss was silent.
         m = c.communication("2013-01-rune-table-morse")
-        self.assertEqual(len(m.body), corpus.EXPECTED_MORSE_CHARS)
+        self.assertEqual(len(m.body), corpus_verify.EXPECTED_MORSE_CHARS)
         self.assertEqual(set(m.body), {"\t", "\n", " "})
         self.assertTrue(m.body.startswith("\n"))
         self.assertEqual(len(m.lines), 4)
@@ -238,13 +244,13 @@ class TestCommunications(unittest.TestCase):
             self.assertTrue(c.communication(cid).body)
 
     def test_covered_by_the_drift_hash(self):
-        self.assertEqual(len(c.communications), corpus.EXPECTED_COMMUNICATIONS)
-        self.assertEqual(corpus.corpus_sha256(), corpus.EXPECTED_CORPUS_SHA)
+        self.assertEqual(len(c.communications), corpus_verify.EXPECTED_COMMUNICATIONS)
+        self.assertEqual(corpus_verify.corpus_sha256(), corpus_verify.EXPECTED_CORPUS_SHA)
 
     def test_manifest_controls_public_puzzle_order(self):
         self.assertEqual(
             [m.sequence for m in c.communications],
-            list(range(1, corpus.EXPECTED_COMMUNICATIONS + 1)),
+            list(range(1, corpus_verify.EXPECTED_COMMUNICATIONS + 1)),
         )
         self.assertEqual(c.communications[0].route, "R12.2")
         self.assertEqual(c.communications[10].route, "R12.7")
@@ -329,7 +335,7 @@ class TestSectionBoundaries(unittest.TestCase):
     def test_unsolved_stream_unmoved(self):
         # Boundary shifts are internal to 0.5-0.12: the concatenated stream
         # must not move.
-        self.assertEqual(c.unsolved.sha256(), corpus.EXPECTED_UNSOLVED_SHA)
+        self.assertEqual(c.unsolved.sha256(), corpus_verify.EXPECTED_UNSOLVED_SHA)
 
     def test_sentences_reconstruct_sections(self):
         for sec in c.sections:
@@ -338,7 +344,7 @@ class TestSectionBoundaries(unittest.TestCase):
                 continue
             stream = [i for s in rows for i in c.gp.to_indices(s.runes)]
             text = list(sec.text().indices)
-            gap = corpus.KNOWN_SENTENCE_GAPS.get(sec.id, 0)
+            gap = corpus_verify.KNOWN_SENTENCE_GAPS.get(sec.id, 0)
             self.assertEqual(text[: len(stream)], stream, sec.id)
             self.assertEqual(len(text) - len(stream), gap, sec.id)
 
@@ -438,7 +444,7 @@ class SentencesCoverage(unittest.TestCase):
       to 596 runes against 672 of ciphertext -- the word square is absent there
       too. No English source in the repo covers it; it lives only in the rune
       stream.
-    * The COVERAGE invariant is not new here. `solver/corpus.py`'s
+    * The COVERAGE invariant is not new here. `solver/corpus_verify.py`'s
       KNOWN_SENTENCE_GAPS and `verify()` already compare sentence runes to the
       stream RUNE FOR RUNE across 15 sections and assert the same 76. What this
       test adds, and the reason to keep it, is different and narrower: it spells
