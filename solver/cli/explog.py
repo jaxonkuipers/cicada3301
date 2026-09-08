@@ -7,8 +7,10 @@ The interface is intentionally narrow::
     explog running
     explog add ...
 
-Search scans record text directly. Running records reserve an object and exact
-operation; result records close named reservations with explicit coverage.
+Search matches any query term and ranks records holding more of them higher.
+Running records reserve an object and exact operation, and `add` names the
+closed results nearest a new claim; result records close named reservations
+with explicit coverage.
 """
 
 from __future__ import annotations
@@ -98,6 +100,23 @@ def warn_reference_drift(entries: list[dict], ledger: explog.Ledger) -> None:
         print(f"warning: {warning}", file=sys.stderr)
 
 
+NEAREST_PRIOR = 5
+
+
+def note_nearest_prior(entries: list[dict], claim: dict) -> None:
+    """Name the closed results a new reservation is most likely to repeat."""
+    nearest = explog.similar_entries(entries, claim, NEAREST_PRIOR)
+    if not nearest:
+        return
+    print(
+        f"note: {len(nearest)} nearest prior results; open with show before computing",
+        file=sys.stderr,
+    )
+    for entry in nearest:
+        detail = entry.get("result") or entry.get("operation") or ""
+        print(f"  {compact_entry(entry)} — {compact(detail, 120)}", file=sys.stderr)
+
+
 def _add_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="explog add", description="Append one ledger record")
     parser.add_argument("--verdict", choices=explog.VERDICTS, required=True)
@@ -150,8 +169,9 @@ def _validate_add(
         if route_error:
             print(route_error, file=sys.stderr)
             return False, {}
+        claim_object = explog.canonical_object(args.claim_object, root=ledger.root)
         duplicate = explog.find_active_duplicate(
-            entries, args.claim_object, args.operation,
+            entries, claim_object, args.operation,
         )
         if duplicate:
             print(f"operation already reserved by #{duplicate.get('id')}", file=sys.stderr)
@@ -159,7 +179,7 @@ def _validate_add(
         return True, {
             "campaign": args.campaign.strip() or wake_id,
             "route": args.route.strip(),
-            "object": args.claim_object.strip(),
+            "object": claim_object,
             "operation": args.operation.strip(),
             "decision": args.decision.strip(),
         }
@@ -248,6 +268,8 @@ def add(args: argparse.Namespace, ledger: explog.Ledger) -> int:
         valid, values = _validate_add(args, entries, ledger, wake_id)
         if not valid:
             return 2
+        if args.verdict == "running":
+            note_nearest_prior(entries, values)
         entry = {
             "id": explog.next_id(entries, wake_id),
             "created_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),

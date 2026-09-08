@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import json
+import math
 import os
 import re
 import subprocess
@@ -100,6 +101,52 @@ def validated_evidence(
             return [], f"evidence is not an existing regular file: {value}"
         paths.append(relative.as_posix())
     return paths, None
+
+
+def lp_ids() -> frozenset[str]:
+    """Canonical `lp:` object ids: every book section and page id."""
+    from solver import corpus
+
+    book = corpus.load()
+    return frozenset(f"lp:{item.id}" for item in (*book.sections, *book.pages))
+
+
+def communication_ids(root: Path = ROOT) -> frozenset[str]:
+    path = root / "corpus" / "communications.csv"
+    try:
+        with path.open(encoding="utf-8", newline="") as source:
+            return frozenset(
+                comm_id for row in csv.DictReader(source)
+                if (comm_id := str(row.get("id", "")).strip())
+            )
+    except OSError:
+        return frozenset()
+
+
+def canonical_object(value: str, *, root: Path = ROOT) -> str:
+    """Return the canonical id an object names, or the prose unchanged.
+
+    Route ids, `lp:` section and page ids, communications ids and repository
+    file paths canonicalize so one artifact groups under one key. Anything
+    else is accepted verbatim: identity converges opportunistically, and the
+    open puzzle is never forced through a closed vocabulary.
+    """
+    candidate = str(value).strip()
+    if not candidate:
+        return candidate
+    try:
+        if candidate in route_ids(root):
+            return candidate
+    except ValueError:
+        pass
+    if candidate.startswith("lp:") and candidate in lp_ids():
+        return candidate
+    if candidate in communication_ids(root):
+        return candidate
+    paths, path_error = validated_evidence([candidate], root=root)
+    if not path_error:
+        return paths[0]
+    return candidate
 
 
 def entry_time(entry: dict) -> str:
@@ -474,12 +521,17 @@ def _record_text(entry: dict) -> str:
 def search_entries(
     entries: list[dict], query: str, limit: int = DEFAULT_LIMIT,
 ) -> tuple[list[dict], int]:
-    """Search conclusions and unresolved locks, hiding superseded reservations."""
+    """Rank conclusions and unresolved locks, hiding superseded reservations.
+
+    Any query term matches; records holding more distinct terms rank higher,
+    exact phrases highest. Requiring every term made vocabulary mismatch look
+    like absent prior coverage, the expensive direction to be wrong in.
+    """
     query_terms = tokens(query)
     if not query_terms:
         raise ValueError("query contains no searchable terms")
     phrase = " ".join(query.split()).casefold()
-    matches: list[tuple[bool, int, dict]] = []
+    matches: list[tuple[bool, int, int, dict]] = []
     resolved = resolved_ids(entries)
     visible = [
         entry for entry in entries
@@ -488,7 +540,51 @@ def search_entries(
     for order, entry in enumerate(visible):
         text = _record_text(entry)
         text_terms = set(tokens(text))
-        if all(term in text_terms for term in query_terms):
-            matches.append((phrase in " ".join(text.split()).casefold(), order, entry))
-    matches.sort(key=lambda row: (row[0], row[1]), reverse=True)
-    return [entry for _, _, entry in matches[:limit]], len(matches)
+        score = sum(term in text_terms for term in query_terms)
+        if not score:
+            continue
+        matches.append(
+            (phrase in " ".join(text.split()).casefold(), score, order, entry)
+        )
+    matches.sort(key=lambda row: row[:3], reverse=True)
+    return [entry for *_, entry in matches[:limit]], len(matches)
+
+
+def similar_entries(entries: list[dict], claim: dict, limit: int = 5) -> list[dict]:
+    """Closed results nearest a new claim's object and operation.
+
+    Rarity-weighted token overlap, ties preferring the claim's own route. A
+    match must share at least one discriminative token -- one carried by a
+    minority of closed results -- so ubiquitous ledger vocabulary alone never
+    raises the neighbourhood note. This is the write-time repetition check:
+    computed from what the writer typed anyway, no taxonomy to hold or force.
+    """
+    closed = [entry for entry in entries if entry.get("verdict") in VERDICTS[1:]]
+    if not closed:
+        return []
+    surfaces = [
+        frozenset(tokens(f"{entry.get('object', '')} {entry.get('operation', '')}"))
+        for entry in closed
+    ]
+    frequency: dict[str, int] = {}
+    for surface in surfaces:
+        for token in surface:
+            frequency[token] = frequency.get(token, 0) + 1
+    claim_tokens = frozenset(
+        tokens(f"{claim.get('object', '')} {claim.get('operation', '')}")
+    )
+    route = str(claim.get("route", "")).strip()
+    scored: list[tuple[float, bool, int, dict]] = []
+    for order, (entry, surface) in enumerate(zip(closed, surfaces, strict=True)):
+        shared = claim_tokens & surface
+        if not any(
+            2 * frequency[token] <= len(closed) or frequency[token] == 1
+            for token in shared
+        ):
+            continue
+        score = sum(math.log(len(closed) / frequency[token]) for token in shared)
+        scored.append(
+            (score, str(entry.get("route", "")).strip() == route, order, entry)
+        )
+    scored.sort(key=lambda row: row[:3], reverse=True)
+    return [entry for *_, entry in scored[:limit]]

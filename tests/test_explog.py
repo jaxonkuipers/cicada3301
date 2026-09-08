@@ -267,6 +267,58 @@ class TestExplog(unittest.TestCase):
                 json.loads(output)[0]["coverage"], "all 256 offsets and two controls",
             )
 
+    def test_search_ranks_any_matched_term(self):
+        with self.log():
+            self.assertEqual(self.call(self.running())[0], 0)
+            self.assertEqual(self.close(result="cobalt control only")[0], 0)
+            self.assertEqual(self.call(self.running("object two", "operation two"))[0], 0)
+            self.assertEqual(
+                self.close(entry_id=hid(3), result="cobalt zero anomaly")[0], 0,
+            )
+            code, output, error = self.call(["cobalt", "zero"])
+            self.assertEqual(code, 0)
+            self.assertIn("2 of 2", error)
+            first, second = [
+                line for line in output.splitlines() if line.startswith("#")
+            ]
+            self.assertIn(str(hid(4)), first)
+            self.assertIn(str(hid(2)), second)
+
+    def test_running_claim_notes_nearest_prior_results(self):
+        with self.log():
+            self.assertEqual(
+                self.call(self.running("lp:0.5", "atbash rotation sweep"))[0], 0,
+            )
+            self.assertEqual(self.close(result="no plaintext at any rotation")[0], 0)
+            code, _, error = self.call(
+                self.running("lp:0.5", "atbash rotation with doubled runes"),
+            )
+            self.assertEqual(code, 0)
+            self.assertIn("nearest prior", error)
+            self.assertIn(str(hid(2)), error)
+            self.assertIn("no plaintext at any rotation", error)
+            code, _, error = self.call(
+                self.running("R12.1", "telephone checksum replay"),
+            )
+            self.assertEqual(code, 0)
+            self.assertNotIn("nearest prior", error)
+
+    def test_object_canonicalizes_known_ids_and_accepts_prose(self):
+        with self.log() as path:
+            absolute = (
+                self.ledger.root / "research" / "campaigns" / "test" / "FINDINGS.md"
+            )
+            self.assertEqual(self.call(self.running(str(absolute)))[0], 0)
+            self.assertEqual(
+                self.call(self.running("free prose object", "second operation"))[0], 0,
+            )
+            entries = [json.loads(line) for line in path.read_text().splitlines()]
+            self.assertEqual(entries[0]["object"], "research/campaigns/test/FINDINGS.md")
+            self.assertEqual(entries[1]["object"], "free prose object")
+        self.assertEqual(ledger_mod.canonical_object("lp:0.5"), "lp:0.5")
+        self.assertEqual(ledger_mod.canonical_object("R14.7"), "R14.7")
+        self.assertEqual(ledger_mod.canonical_object("lp:unknown"), "lp:unknown")
+
     def test_search_collapses_a_closed_claim_but_show_retains_it(self):
         with self.log():
             self.assertEqual(self.call(self.running("rare object", "rare operation"))[0], 0)
