@@ -67,6 +67,30 @@ class RouteIntegrity(unittest.TestCase):
             record_link = Path(row["path"]).parent.as_posix() + "/"
             self.assertIn(f"[{row['route']}]({record_link})", route_map)
 
+    def test_route_map_table_matches_route_csv(self):
+        route_map = (CORPUS / "README.md").read_text(encoding="utf-8")
+        table = {
+            match.group(1): match.group(2)
+            for match in re.finditer(
+                r"^\| \[(R\d+\.\d+)\]\([^)]+\) \| .+? \| .+? \| (\w+) \|$",
+                route_map, re.MULTILINE,
+            )
+        }
+        self.assertEqual(set(table), self.route_ids)
+        for row in self.route_rows:
+            self.assertEqual(table[row["route"]], row["status"], row["route"])
+
+    def test_route_round_matches_its_id(self):
+        for row in self.route_rows:
+            self.assertEqual(row["round"], "20" + row["route"][1:3], row["route"])
+
+    def test_communication_columns_agree_with_their_derivations(self):
+        rounds = {row["route"]: row["round"] for row in self.route_rows}
+        for row in rows(CORPUS / "communications.csv"):
+            self.assertEqual(row["path"].split("/")[1], row["route"], row["id"])
+            self.assertEqual(row["round"], rounds[row["route"]], row["id"])
+            self.assertTrue(row["id"].startswith(row["round"]), row["id"])
+
     def test_communications_use_route_ids_and_existing_artifacts(self):
         communications = rows(CORPUS / "communications.csv")
         self.assertTrue(communications)
